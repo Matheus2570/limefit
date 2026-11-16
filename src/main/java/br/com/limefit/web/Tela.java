@@ -23,6 +23,18 @@ public enum Tela {
     }
 
     public String rota() { return rota; }
+    public String modulo() {
+        return switch (this) {
+            case INICIO -> "inicio";
+            case PERFIL -> "perfil";
+            case ALIMENTOS -> "alimentos";
+            case REFEICOES -> "refeicoes";
+            case PLANEJAMENTO -> "planejamento";
+            case PROJETO -> "projeto";
+            case LOGIN, CADASTRO, CADASTRO_SUCESSO -> "login";
+        };
+    }
+    public String css() { return "/assets/" + modulo() + ".css"; }
     public String titulo(Idioma idioma) { return idioma.escolher(portugues, ingles); }
     public boolean privada() { return privada; }
     public boolean noMenu() { return menu; }

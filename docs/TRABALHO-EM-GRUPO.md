@@ -28,6 +28,8 @@ git switch -c feat/alimentos
 
 Edite `src/main/java/br/com/limefit/modulos/alimentos/AlimentosPagina.java`. Implemente a interface em `conteudo` usando j2html, e crie modelo e DAO nessa mesma pasta. Faça ambos os idiomas com `idioma.escolher`. Os outros integrantes seguem o mesmo padrão no próprio módulo.
 
+Para os estilos, edite `src/main/resources/assets/alimentos.css` e prefixe os seletores com `.pagina-alimentos`. Cada módulo tem seu próprio CSS, carregado automaticamente junto com o CSS comum. A tabela completa está no [README](../README.md#css-de-cada-módulo).
+
 Antes de escrever SQL, leia [Contas e dados](CONTAS-E-DADOS.md). O dono vem de `usuarioId(pedido)`. Alimentos também são privados. Toda consulta, alteração e exclusão deve filtrar a conta; referências de perfil, refeição e alimento precisam ter o mesmo dono.
 
 ```powershell
@@ -41,6 +43,7 @@ Depois de testar:
 ```powershell
 git status
 git add src/main/java/br/com/limefit/modulos/alimentos
+git add src/main/resources/assets/alimentos.css
 git commit -m "Implementa alimentos por conta"
 git push -u origin HEAD
 ```

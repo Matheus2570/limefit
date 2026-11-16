@@ -41,6 +41,7 @@ final class Layout {
                         title(ativa.titulo(idioma) + " | LimeFit"),
                         link().withRel("icon").withHref("/assets/logo.png").withType("image/png"),
                         link().withRel("stylesheet").withHref("/assets/limefit.css"),
+                        link().withRel("stylesheet").withHref(ativa.css()),
                         script().withSrc("/assets/autenticacao.js").attr("defer")),
                 body(a(idioma.escolher("Ir para o conteúdo", "Skip to content")).withHref("#conteudo").withClass("pular"),
                         header(div(
@@ -52,6 +53,6 @@ final class Layout {
                         footer(div(span("LimeFit"), span(idioma.escolher(
                                 "Projeto acadêmico · POO e Inglês Técnico", "Academic project · OOP & Technical English")))
                                 .withClass("container rodape-inner")).withClass("rodape"))
-                        .withClass(classe)).attr("lang", idioma.tag()).render();
+                        .withClass(classe + " pagina-" + ativa.modulo())).attr("lang", idioma.tag()).render();
     }
 }

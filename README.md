@@ -50,6 +50,30 @@ Todos os caminhos abaixo começam em `src/main/java/br/com/limefit/`. A interfac
 
 Essas cinco rotas exigem login. Modelos e DAOs futuros ficam na mesma pasta da página de cada integrante. O menu, o idioma, a proteção das páginas e o CSRF são aplicados pela classe abstrata `Pagina`.
 
+### CSS de cada módulo
+
+Os estilos ficam em `src/main/resources/assets/`. Cada página carrega `limefit.css` (estrutura e componentes compartilhados) e apenas o CSS do seu módulo, definido em `Tela`. Login, cadastro e confirmação de cadastro compartilham `login.css`.
+
+| Módulo | Arquivo CSS | Classe no `body` |
+|---|---|---|
+| Início | `inicio.css` | `.pagina-inicio` |
+| Login e cadastro | `login.css` | `.pagina-login` |
+| Perfil | `perfil.css` | `.pagina-perfil` |
+| Alimentos | `alimentos.css` | `.pagina-alimentos` |
+| Refeições | `refeicoes.css` | `.pagina-refeicoes` |
+| Planejamento | `planejamento.css` | `.pagina-planejamento` |
+| Projeto | `projeto.css` | `.pagina-projeto` |
+
+Cada integrante altera o CSS do próprio módulo, incluindo as regras responsivas. Prefixe os seletores com a classe da página para limitar o alcance dos estilos:
+
+```css
+.pagina-refeicoes .lista {
+    display: grid;
+}
+```
+
+Use `limefit.css` para mudanças que devem valer para todos: cores, tipografia base, menu, rodapé, botões e outros componentes comuns. Os módulos que ainda têm apenas título já possuem seu arquivo CSS preparado para receber estilos.
+
 **O ID da conta sempre vem de `usuarioId(pedido)` ou `Autenticacao.exigirUsuario(pedido).id()`.** Nunca use `usuario_id` ou `perfil_id` recebidos do navegador como identidade. Inclusive os alimentos são particulares de cada conta. Veja os contratos e exemplos em [Contas e dados](docs/CONTAS-E-DADOS.md) antes de implementar os DAOs.
 
 ## Validação

@@ -1,0 +1,13 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "LimeFit: abrir janela",
+            "type": "shell",
+            "command": "${workspaceFolder}\\mvnw.cmd",
+            "args": ["compile", "exec:java"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": []
+        }
+    ]
+}

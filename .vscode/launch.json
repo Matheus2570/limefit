@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "LimeFit Desktop",
+            "request": "launch",
+            "mainClass": "br.com.limefit.Aplicacao",
+            "projectName": "limefit",
+            "console": "integratedTerminal"
+        }
+    ]
+}

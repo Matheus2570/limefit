@@ -1,136 +1,84 @@
-# Contas e dados
+# Sessão, esquema e contratos dos módulos
 
-## Identidade no Java
+## Identidade desktop
 
-`Autenticacao` mantém as sessões em memória no servidor. O cookie `LIMEFIT_SESSION` contém um token aleatório de 256 bits, com `HttpOnly`, `SameSite=Lax` e caminho `/`. A identidade não fica no cookie. Ao entrar, o token e o CSRF são trocados; ao sair, a sessão anterior é invalidada. As sessões expiram após 30 minutos sem uso e terminam quando o servidor reinicia. Para HTTPS, configure `LIMEFIT_COOKIE_SECURE=true`.
+Existe um objeto `Sessao` por `ContextoAplicacao`. Ele contém apenas `Usuario(id,nome,email)` e uma revisão que muda ao entrar ou sair. Nenhuma senha/hash fica na sessão. O login carrega a identidade do MariaDB; campos da interface não definem o ID.
 
-`Usuario` contém ID, nome e e-mail retornados pelo banco. As senhas novas usam PBKDF2-HMAC-SHA256, 600 mil iterações, salt aleatório por senha e comparação do resultado em tempo constante. O ZIP é uma referência de fluxo e visual: seus scripts PHP e suas contas não são importados. Hashes PHP não são convertidos por este SQL; o fluxo entregue cria contas pelo cadastro Java.
+A janela exige autenticação em Perfil, Alimentos, Refeições, Planejamento e Projeto. Ao tentar navegar sem conta, abre Login; após autenticar, retorna ao módulo solicitado. No login normal, retorna à Home. Ela mostra o nome da pessoa e o botão de perfil; o cabeçalho oferece Sair. Ao sair ou fechar a janela, a identidade é removida e todas as telas recebem `limparDados()`.
 
-Dentro de uma subclasse de `Pagina`:
+Use `contexto.usuarioId()` ou `contexto.sessao().exigirUsuarioId()` na interface. Os DAOs herdam `usuarioId()` de `DaoDaConta`; obtenha o ID uma vez no início de cada operação e use esse valor em todos os comandos da operação. O DAO não mantém uma identidade capturada no construtor. Nunca aceite o dono de um campo editável ou use `id=1`.
 
-```java
-long dono = usuarioId(pedido);
-```
+Para trabalhos em segundo plano, registre a revisão da sessão ao agendar. Só inicie uma operação se ainda for a mesma sessão; use o ID obtido no início em toda a transação. Em `done()`, confira a revisão antes de aplicar dados à interface. A autenticação implementada já invalida respostas antigas ao navegar, sair ou trocar de conta.
 
-Em outro handler ou classe Java:
+## Banco conferido
 
-```java
-long dono = Autenticacao.exigirUsuario(pedido).id();
-DadosDaConta conta = new DadosDaConta(conexao, pedido);
-boolean permitido = conta.pertence(DadosDaConta.Registro.ALIMENTO, alimentoId);
-```
+MariaDB local 10.11.16, tabelas e constraints conferidas antes de alterar a aplicação. O banco atual já contém a migração `001-contas-e-propriedade.sql`. **Swing não exige alteração SQL.** Há uma conta no banco pessoal; os testes usam bancos temporários.
 
-`exigirUsuario` falha se não houver login. `DadosDaConta` recebe a requisição e obtém o dono da sessão; seu construtor não recebe o dono de um formulário. A checagem `pertence` ajuda a validar referências, mas cada consulta, atualização ou exclusão ainda precisa filtrar a conta na própria instrução SQL.
+Para instalar do zero, `sql/limefit.sql` agora contém tudo: banco, cinco tabelas, índices, chaves e oito gatilhos. O incremental 001 permanece disponível apenas para instalações anteriores à propriedade por conta. `sql/conferir-banco.sql` faz somente leitura de metadados. Não execute os scripts de `sql/legado/` no banco de trabalho: são fixtures de teste do esquema original.
 
-As páginas herdam a checagem de login de `Pagina.handle`. Novas páginas privadas precisam usar uma `Tela` com `privada=true`. Handlers de API registrados diretamente no roteador devem verificar a sessão antes de processar dados e retornar 401 quando ela não existir.
-
-## Esquema e migração
-
-Importe `sql/001-contas-e-propriedade.sql` sobre o `sql/limefit.sql` existente. Em uma instalação nova, importe os dois nessa ordem. O script foi validado no MariaDB do XAMPP e pode ser reaplicado.
-
-| Tabela | Propriedade e vínculos |
+| Tabela | Colunas e contrato |
 |---|---|
-| `usuarios` | Conta com e-mail único e hash de senha |
-| `perfis` | `usuario_id`, um perfil por conta; `identificador` original preservado |
-| `alimentos` | `usuario_id`; nome único **por conta**, permitindo o mesmo nome para pessoas diferentes |
-| `refeicoes` | `usuario_id`; a FK `(perfil_id, usuario_id)` exige perfil do mesmo dono |
-| `itens_refeicao` | `usuario_id`; as FKs compostas exigem refeição **e alimento** do mesmo dono |
+| `usuarios` | `id BIGINT UNSIGNED`, `nome VARCHAR(120)`, `email VARCHAR(190)` único, `senha_hash VARCHAR(255)`, `criado_em TIMESTAMP` |
+| `perfis` | `id INT UNSIGNED`, `identificador CHAR(64)` ASCII único, `peso_kg DECIMAL(5,2)` entre 25 e 300, `altura_cm DECIMAL(5,2)` entre 100 e 230, `objetivo ENUM('mass','loss','balance','maintain')`, `usuario_id BIGINT UNSIGNED` único |
+| `alimentos` | `id INT UNSIGNED`, `nome VARCHAR(100)`, `calorias DECIMAL(6,2) UNSIGNED` até 1000, `proteinas`, `carboidratos`, `gorduras DECIMAL(5,2) UNSIGNED` até 100, `usuario_id BIGINT UNSIGNED`; nome único por conta |
+| `refeicoes` | `id INT UNSIGNED`, `perfil_id INT UNSIGNED`, `data_plano DATE`, `nome VARCHAR(100)`, `usuario_id BIGINT UNSIGNED` |
+| `itens_refeicao` | PK composta `(refeicao_id,alimento_id)` ambos INT UNSIGNED, `quantidade_g DECIMAL(7,2)` maior que 0 e até 10000, `usuario_id BIGINT UNSIGNED` |
 
-As colunas `usuario_id` são nullable somente para preservar linhas anteriores à migração. Gatilhos exigem dono em novos registros e impedem retirar ou trocar um dono já atribuído. As linhas antigas permanecem com seus IDs, valores e vínculos, porém com dono `NULL`, ficando fora de consultas `WHERE usuario_id = ?`. Não há uma conta global nem alimentos compartilhados.
+Java usa `long` para IDs, `BigDecimal` para medidas/nutrientes e `LocalDate` para datas. Nenhuma tabela nova é necessária. Planejamento é uma visão das refeições por `data_plano`.
 
-Se o grupo precisar recuperar dados antigos, um administrador deve identificar o dono correto e associar explicitamente as linhas. Associe primeiro perfil e alimentos, depois refeições e itens, na mesma transação. Nunca ofereça ao usuário uma opção de reivindicar registros por ID. A migração não faz essa associação automaticamente.
+O campo `perfis.identificador` continua para preservar o esquema e os registros; ele não é a identidade de login. Ao criar um perfil, gere um token técnico único de 64 caracteres (por exemplo SHA-256 de um UUID); preserve-o nas atualizações. `Objetivo.codigo()` fornece exatamente os valores SQL do ENUM. Altura está em centímetros e deve ser dividida por 100 no cálculo do IMC.
 
-O cadastro cria somente a conta. O colega do Perfil implementará a criação do perfil com medidas válidas; não há peso ou altura fictícios criados pelo login. Ao criar o perfil, mantenha `identificador` com 64 caracteres únicos, por exemplo dois UUIDs sem hífen concatenados; ele não substitui `usuario_id`.
+Todos os nutrientes dos alimentos são **por 100 g**. Para uma porção: `nutriente * quantidade_g / 100`. Use `BigDecimal`, some sem arredondar intermediários e arredonde só para exibir. Um plano sem refeições retorna lista vazia e totais zero quando o colega implementar, nunca null.
 
-## Contrato para os futuros DAOs
+## Assinaturas acordadas
 
-Use `PreparedStatement`, `try-with-resources` e o dono obtido da sessão. Os exemplos abaixo são orientações para as branches; não há CRUD desses módulos implementado nesta entrega.
+Todos os DAOs recebem `(Conexao conexao, Sessao sessao)` e todos os métodos declarados lançam `SQLException`. Eles ainda não executam SQL: lançam uma exceção que identifica a implementação pendente. Não engula essa exceção nem apresente sucesso antes de implementar.
 
-Listar e consultar:
+- `PerfilDao.buscarAtual(): Optional<Perfil>`
+- `PerfilDao.salvar(BigDecimal pesoKg, BigDecimal alturaCm, Objetivo objetivo): Perfil`
+- `PerfilDao.excluirAtual(): boolean`
+- `AlimentoDao.listar(String filtroNome): List<Alimento>`; string vazia significa todos da conta.
+- `AlimentoDao.buscarPorId(long id): Optional<Alimento>`
+- `AlimentoDao.cadastrar(String nome, BigDecimal calorias, BigDecimal proteinas, BigDecimal carboidratos, BigDecimal gorduras): Alimento`
+- `AlimentoDao.atualizar(long id, String nome, BigDecimal calorias, BigDecimal proteinas, BigDecimal carboidratos, BigDecimal gorduras): boolean`
+- `AlimentoDao.excluir(long id): boolean`
+- `RefeicaoDao.listarPorData(LocalDate data): List<Refeicao>`
+- `RefeicaoDao.buscarPorId(long id): Optional<Refeicao>`
+- `RefeicaoDao.cadastrar(long perfilId, LocalDate data, String nome): Refeicao`
+- `RefeicaoDao.atualizar(long id, LocalDate data, String nome): boolean`
+- `RefeicaoDao.excluir(long id): boolean`
+- `RefeicaoDao.listarItens(long refeicaoId): List<ItemRefeicao>`
+- `RefeicaoDao.definirPorcao(long refeicaoId, long alimentoId, BigDecimal quantidadeG): void`; insere ou atualiza a quantidade.
+- `RefeicaoDao.removerItem(long refeicaoId, long alimentoId): boolean`
+- `PlanejamentoDao.buscarPorData(LocalDate data): PlanoDiario`
+- `PlanejamentoDao.calcularTotais(LocalDate data): TotaisNutricionais`
 
-```sql
-SELECT id, nome, calorias, proteinas, carboidratos, gorduras
-FROM alimentos WHERE usuario_id = ? ORDER BY nome;
+`Optional.empty()` representa registro ausente ou pertencente a outra conta. Atualizações/exclusões retornam `false` se nenhuma linha da conta foi afetada. SQL ou valores inválidos produzem erros que a tela deve apresentar no idioma atual. Falta de implementação nunca é resultado vazio.
 
-SELECT id, nome, calorias FROM alimentos WHERE id = ? AND usuario_id = ?;
+## Regras obrigatórias da implementação futura
 
-SELECT id FROM perfis WHERE usuario_id = ?;
-
-SELECT id, nome, data_plano FROM refeicoes
-WHERE usuario_id = ? AND data_plano = ? ORDER BY id;
-```
-
-O `id` de um alimento ou refeição pode vir da URL como seletor. O parâmetro `usuario_id` sempre vem da sessão. A ausência de resultado deve ser tratada como registro inexistente, sem revelar se pertence a outra conta.
-
-Gravar um alimento:
-
-```java
-long dono = usuarioId(pedido);
-try (var banco = conexao.abrir();
-     var inserir = banco.prepareStatement("""
-         INSERT INTO alimentos
-             (nome, calorias, proteinas, carboidratos, gorduras, usuario_id)
-         VALUES (?, ?, ?, ?, ?, ?)
-         """)) {
-    // Parâmetros 1 a 5: dados validados do formulário.
-    inserir.setString(1, nome);
-    inserir.setBigDecimal(2, calorias);
-    inserir.setBigDecimal(3, proteinas);
-    inserir.setBigDecimal(4, carboidratos);
-    inserir.setBigDecimal(5, gorduras);
-    inserir.setLong(6, dono);
-    inserir.executeUpdate();
-}
-```
-
-Alterar ou excluir, conferindo se `executeUpdate()` afetou a quantidade esperada de registros:
+Cada SELECT, UPDATE e DELETE filtra o proprietário. Cada INSERT preenche `usuario_id` com o ID autenticado. Use PreparedStatement e try-with-resources. Exemplos:
 
 ```sql
-UPDATE alimentos SET nome = ?, calorias = ? WHERE id = ? AND usuario_id = ?;
-DELETE FROM alimentos WHERE id = ? AND usuario_id = ?;
-UPDATE perfis SET peso_kg = ?, altura_cm = ?, objetivo = ? WHERE id = ? AND usuario_id = ?;
-UPDATE refeicoes SET nome = ? WHERE id = ? AND usuario_id = ?;
-DELETE FROM refeicoes WHERE id = ? AND usuario_id = ?;
-DELETE FROM itens_refeicao WHERE refeicao_id = ? AND alimento_id = ? AND usuario_id = ?;
+SELECT id, nome, calorias, proteinas, carboidratos, gorduras, usuario_id
+FROM alimentos WHERE id = ? AND usuario_id = ?;
+UPDATE alimentos SET nome = ? WHERE id = ? AND usuario_id = ?;
+DELETE FROM itens_refeicao
+WHERE refeicao_id = ? AND alimento_id = ? AND usuario_id = ?;
 ```
 
-Para criar uma refeição, consulte o perfil pelo dono e valide cada alimento com `id = ? AND usuario_id = ?`. Grave refeição e itens com o mesmo dono, na mesma transação. As FKs compostas também recusam vínculos entre contas. Excluir uma refeição remove seus itens; alimentos usados em itens têm exclusão restrita pelas FKs existentes.
-
-Para somar nutrientes no Planejamento:
+As consultas por data filtram `data_plano` e `usuario_id`. Nos JOINs, relacione também o dono:
 
 ```sql
-SELECT r.id, r.nome,
-       SUM(a.calorias * i.quantidade_g / 100) AS calorias,
-       SUM(a.proteinas * i.quantidade_g / 100) AS proteinas,
-       SUM(a.carboidratos * i.quantidade_g / 100) AS carboidratos,
-       SUM(a.gorduras * i.quantidade_g / 100) AS gorduras
+SELECT COALESCE(SUM(a.calorias * i.quantidade_g / 100), 0) AS calorias
 FROM refeicoes r
 JOIN itens_refeicao i ON i.refeicao_id = r.id AND i.usuario_id = r.usuario_id
-JOIN alimentos a ON a.id = i.alimento_id AND a.usuario_id = r.usuario_id
-WHERE r.usuario_id = ? AND r.data_plano = ?
-GROUP BY r.id, r.nome;
+JOIN alimentos a ON a.id = i.alimento_id AND a.usuario_id = i.usuario_id
+WHERE r.data_plano = ? AND r.usuario_id = ?;
 ```
 
-## Formulários e telas
+Aplique o mesmo cálculo a proteínas, carboidratos e gorduras. Obtenha lista e totais em uma leitura consistente para `PlanoDiario`.
 
-Cada módulo sobrescreve `conteudo(HttpExchange pedido, Idioma idioma)` e retorna `DomContent` do j2html. A base aplica menu, idioma e título do documento. O j2html escapa textos: passe dados do usuário para `text`, `p`, `span` ou `.withValue`, evitando `rawHtml`.
+Antes de gravar referências (`perfil_id`, `refeicao_id`, `alimento_id`), confira se todas pertencem à conta e use a mesma transação para a operação inteira, com rollback em erro. As FKs compostas reforçam isso no banco. Um alimento em uso não pode ser apagado; apresente a restrição em vez de remover dados de outras entidades silenciosamente. Excluir perfil ou refeição remove seus dependentes por cascata; comunique esse efeito na futura tela de exclusão.
 
-Para processar um formulário, sobrescreva:
-
-```java
-@Override
-protected void enviarFormulario(HttpExchange pedido, Idioma idioma,
-                                Map<String, String> campos) throws IOException {
-    long dono = usuarioId(pedido);
-    // Validar campos, chamar o DAO com o dono da sessão e redirecionar.
-}
-```
-
-`Pagina` já lê o formulário e valida o CSRF antes de chamar esse método. Inclua no formulário j2html:
-
-```java
-input().withType("hidden").withName("csrf_token")
-       .withValue(Autenticacao.sessao(pedido).csrf())
-```
-
-Use `method=post` para gravações e `idioma.url(...)` nas ações e redirecionamentos. A saída também usa POST e CSRF; `GET /sair` retorna 405. O formulário aceita `application/x-www-form-urlencoded` até 16 KiB; campos repetidos são recusados.
+`usuario_id NULL` é exclusivo de linhas legadas sem dono conhecido. Elas são preservadas e ficam fora das consultas por conta; não as associe ao usuário que entrar primeiro. Os gatilhos exigem dono em novos registros e impedem trocar um dono já atribuído. Qualquer associação administrativa de legados deve ser combinada e documentada separadamente.

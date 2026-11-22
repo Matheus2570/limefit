@@ -1,93 +1,68 @@
-# LimeFit
+# LimeFit Desktop
 
-Projeto acadêmico de Programação Orientada a Objetos e Inglês Técnico. Home e autenticação implementadas em **Java 17 + j2html**, com JDBC/MariaDB. As páginas dos demais módulos têm apenas menu e título para a equipe desenvolver nas próprias branches.
+Projeto acadêmico de POO e Inglês, em **Java 17 + Swing + JDBC/MariaDB**. O comando de execução abre uma janela própria. Home, cadastro, confirmação, login e saída estão implementados. Perfil, Alimentos, Refeições, Planejamento e Projeto abrem com menu e título e têm o conteúdo vazio para a equipe.
 
-## Rodar no Windows
+## Executar no Windows / VS Code
 
-1. Inicie **MySQL** no XAMPP. Apache só é necessário para usar o phpMyAdmin.
-2. No phpMyAdmin, importe o SQL na ordem abaixo:
-   - Banco novo: `sql/limefit.sql` e depois `sql/001-contas-e-propriedade.sql`.
-   - Já importou `limefit.sql`: importe **somente `sql/001-contas-e-propriedade.sql`**.
-3. Com JDK 17 ou superior, execute na pasta do `pom.xml`:
+1. Instale JDK 17 ou superior. No XAMPP, inicie **MySQL**. Apache só é necessário para abrir o phpMyAdmin.
+2. **Seu banco `limefit` já migrado atende ao desktop. Não execute alteração de esquema.** As cinco tabelas, colunas de dono, índices, FKs compostas e oito gatilhos foram conferidos no MariaDB local.
+3. Para uma **instalação nova**, execute apenas [sql/limefit.sql](sql/limefit.sql), que agora contém o esquema completo. Para uma instalação antiga sem `usuarios`/`usuario_id`, existe [sql/001-contas-e-propriedade.sql](sql/001-contas-e-propriedade.sql); a conversão para Swing não exige nova migração. A pasta `sql/legado/` contém somente fixtures usadas na validação, não scripts para instalar a aplicação atual.
+4. Abra a pasta que contém `pom.xml` no VS Code e execute no terminal PowerShell:
 
    ```powershell
    .\mvnw.cmd compile exec:java
    ```
 
-4. Abra http://localhost:8080/. O idioma inicial é inglês; PT/EN aparece no cabeçalho. Crie uma conta em `/cadastro`, confira a confirmação, entre em `/login` e use **Log out / Sair** no menu para encerrar a sessão.
-5. http://localhost:8080/status/banco continua consultando o MariaDB. Retorna `"status":"ok"` quando a conexão e a tabela `alimentos` estão disponíveis.
+   Também é possível usar **Run Java** em `Aplicacao.java` ou a configuração **LimeFit Desktop** em Run and Debug. A tarefa **LimeFit: abrir janela** executa o mesmo comando Maven. Feche a janela para encerrar a aplicação; não há servidor web.
 
-O Maven Wrapper e o driver JDBC existentes foram preservados. O Wrapper recebeu uma correção para a pasta `.m2` sem link simbólico. A primeira compilação também baixa j2html; JUnit é usado somente nos testes.
+O idioma inicial é inglês. PT/EN traduz os títulos, o menu, os formulários, as validações e as mensagens. O cadastro aceita nome de até 120 caracteres, e-mail de até 190 e senha de 8 a 128 caracteres. A confirmação não autentica automaticamente: entre depois de criar a conta. E-mails são normalizados para minúsculas e permanecem únicos. Os hashes PBKDF2 e as contas anteriores são reaproveitados sem conversão.
 
-| Variável de ambiente | Padrão | Uso |
+| Variável | Padrão | Finalidade |
 |---|---|---|
-| `LIMEFIT_DB_PORT` | `3306` | Porta do MariaDB do XAMPP |
+| `LIMEFIT_DB_PORT` | `3306` | Porta do MariaDB local |
+| `LIMEFIT_DB_NAME` | `limefit` | Banco |
 | `LIMEFIT_DB_USER` | `root` | Usuário JDBC |
 | `LIMEFIT_DB_PASSWORD` | vazio | Senha JDBC |
-| `LIMEFIT_DB_NAME` | `limefit` | Nome do banco; permite testes isolados |
-| `LIMEFIT_HTTP_PORT` | `8080` | Porta do servidor Java |
-| `LIMEFIT_COOKIE_SECURE` | `false` | Usar `true` quando servido por HTTPS |
 
-Exemplo para uma instalação na porta 3307:
+Exemplo: `$env:LIMEFIT_DB_PORT = '3307'`, seguido do comando Maven. O Wrapper mantém sua correção para `.m2` sem link simbólico e usa o perfil do Windows para o cache, inclusive quando o JDK informa `user.home=C:\`. Um `-Dmaven.repo.local=...` explícito ainda tem precedência.
 
-```powershell
-$env:LIMEFIT_DB_PORT = '3307'
-.\mvnw.cmd compile exec:java
-```
+## Pastas de trabalho
 
-## Onde cada integrante trabalha
+A raiz Java é `src/main/java/br/com/limefit/`.
 
-Todos os caminhos abaixo começam em `src/main/java/br/com/limefit/`. A interface de cada página fica no método `conteudo(HttpExchange pedido, Idioma idioma)` da própria classe. Use `idioma.escolher("Português", "English")` nos textos e `idioma.url("/rota")` nos links e ações dos formulários.
-
-| Integrante | Rota | Classe | Branch sugerida |
-|---|---|---|---|
-| Matheus de Carvalho | `/` e autenticação | `modulos/inicio/InicioPagina.java`, `modulos/login/` | `feat/inicio-integracao` |
-| Matheus Maiolo | `/perfil` | `modulos/perfil/PerfilPagina.java` | `feat/perfil` |
-| Lucas Casagrande | `/alimentos` | `modulos/alimentos/AlimentosPagina.java` | `feat/alimentos` |
-| Guilherme Azevedo | `/refeicoes` | `modulos/refeicoes/RefeicoesPagina.java` | `feat/refeicoes` |
-| Gustavo Silva Gomes | `/planejamento` | `modulos/planejamento/PlanejamentoPagina.java` | `feat/planejamento` |
-| Francisco da Silva | `/projeto` | `modulos/projeto/ProjetoPagina.java` | `feat/projeto-ingles` |
-
-Essas cinco rotas exigem login. Modelos e DAOs futuros ficam na mesma pasta da página de cada integrante. O menu, o idioma, a proteção das páginas e o CSRF são aplicados pela classe abstrata `Pagina`.
-
-### CSS de cada módulo
-
-Os estilos ficam em `src/main/resources/assets/`. Cada página carrega `limefit.css` (estrutura e componentes compartilhados) e apenas o CSS do seu módulo, definido em `Tela`. Login, cadastro e confirmação de cadastro compartilham `login.css`.
-
-| Módulo | Arquivo CSS | Classe no `body` |
+| Responsável | Pasta a devolver | Tela |
 |---|---|---|
-| Início | `inicio.css` | `.pagina-inicio` |
-| Login e cadastro | `login.css` | `.pagina-login` |
-| Perfil | `perfil.css` | `.pagina-perfil` |
-| Alimentos | `alimentos.css` | `.pagina-alimentos` |
-| Refeições | `refeicoes.css` | `.pagina-refeicoes` |
-| Planejamento | `planejamento.css` | `.pagina-planejamento` |
-| Projeto | `projeto.css` | `.pagina-projeto` |
+| Matheus de Carvalho | `modulos/inicio/`, `modulos/login/` e integração | `TelaInicio`, `TelaLogin`, `TelaCadastro`, `TelaCadastroSucesso` |
+| Matheus Maiolo | `modulos/perfil/` | `TelaPerfil.java` |
+| Lucas | `modulos/alimentos/` | `TelaAlimentos.java` |
+| Guilherme | `modulos/refeicoes/` | `TelaRefeicoes.java` |
+| Gustavo | `modulos/planejamento/` | `TelaPlanejamento.java` |
+| Francisco | `modulos/projeto/` | `TelaProjeto.java` |
 
-Cada integrante altera o CSS do próprio módulo, incluindo as regras responsivas. Prefixe os seletores com a classe da página para limitar o alcance dos estilos:
+Cada pasta dos colegas inclui seu próprio `LEIA-ME.md`. Os módulos que usam dados já contêm modelos e um DAO com assinaturas estáveis. **Os métodos pendentes lançam `UnsupportedOperationException`; não retornam dados fictícios nem gravam no banco.** As telas continuam vazias até a implementação dos colegas.
 
-```css
-.pagina-refeicoes .lista {
-    display: grid;
-}
-```
+Compartilhe o projeto inteiro. Cada colega trabalha no próprio módulo, mantém nomes/pacotes/contratos e devolve a pasta correspondente. Ao integrar, copie para o mesmo caminho e compile. Alterações na base ou no banco devem ser descritas separadamente e combinadas antes de integrar. Consulte [Trabalho em grupo](docs/TRABALHO-EM-GRUPO.md) e [Contratos de dados](docs/CONTAS-E-DADOS.md).
 
-Use `limefit.css` para mudanças que devem valer para todos: cores, tipografia base, menu, rodapé, botões e outros componentes comuns. Os módulos que ainda têm apenas título já possuem seu arquivo CSS preparado para receber estilos.
+## Estrutura e POO
 
-**O ID da conta sempre vem de `usuarioId(pedido)` ou `Autenticacao.exigirUsuario(pedido).id()`.** Nunca use `usuario_id` ou `perfil_id` recebidos do navegador como identidade. Inclusive os alimentos são particulares de cada conta. Veja os contratos e exemplos em [Contas e dados](docs/CONTAS-E-DADOS.md) antes de implementar os DAOs.
+- `Aplicacao`: inicializa o Swing na EDT.
+- `desktop/JanelaPrincipal`: único JFrame; CardLayout, menu, proteção das telas e navegação.
+- `desktop/ContextoAplicacao`: composição de conexão, sessão, idioma e navegação; injetada pelos construtores.
+- `desktop/PainelTela` e `PainelModulo`: herança para o ciclo de vida e o painel de conteúdo.
+- `desktop/Visual`: componentes, cores, layouts e imagens compartilhados.
+- `autenticacao/ServicoContas`: validação; `UsuarioDao`: JDBC; `Senhas`: PBKDF2; `Sessao`: identidade em memória.
+- `banco/Conexao`: mesma conexão JDBC existente; `DaoDaConta`: base dos contratos de dados privados.
+- `modulos/`: interfaces, modelos e DAOs de cada pessoa.
+
+A dependência de execução é o driver MariaDB. JUnit é usado só nos testes. Não há j2html, páginas, cookies, CSS, JavaScript ou servidor HTTP na aplicação. As imagens originais continuam em `src/main/resources/assets/`. A Home usa duas colunas em janelas maiores e empilha texto/foto em janelas menores. Os formulários têm rolagem vertical quando necessário.
 
 ## Validação
 
-Com MySQL do XAMPP ligado e Python 3 disponível:
-
 ```powershell
+.\mvnw.cmd test
 python scripts/validar.py
 ```
 
-O script cria um banco temporário, importa o esquema original e os registros fictícios, aplica a migração duas vezes e executa cinco testes de integração HTTP/JDBC. Cria Ana e Bruno, confere PT/EN, cadastro, duplicidade, hash, login, CSRF, rotação de sessão, acesso direto a páginas privadas, saída, propriedade dos alimentos e restrições entre contas. A aplicação usa uma porta HTTP livre; seu servidor na 8080 continua independente. O banco temporário é removido ao terminar, inclusive as duas contas.
+O primeiro comando executa os testes unitários sem acessar o banco pessoal. O segundo exige Python 3, uma sessão gráfica, MySQL do XAMPP e permissão do usuário SQL para criar/remover bancos temporários. Use `LIMEFIT_MYSQL` para indicar outro caminho do cliente mysql. O script prepara bancos separados, verifica o SQL completo e a migração, abre uma janela Swing real, testa duas contas e remove os bancos temporários ao terminar. Não altera `limefit`.
 
-Use `LIMEFIT_MYSQL` se o executável `mysql` estiver fora do PATH e de `C:\xampp\mysql\bin\mysql.exe`. Os testes usam as mesmas credenciais JDBC da aplicação; o usuário do teste precisa criar e remover o banco temporário. `mvnw.cmd test` sem `LIMEFIT_TEST_DB` pula os testes de integração para não gravar no banco pessoal.
-
-`sql/dados-teste.sql` foi mantido como fixture do esquema original, executada **antes** da migração na validação. Depois da migração, cadastre dados com um dono conforme o guia; esse SQL antigo não cria dados visíveis para uma conta.
-
-Leia também [Trabalho em grupo](docs/TRABALHO-EM-GRUPO.md) e [Arquivos e validação desta entrega](docs/ENTREGA.md).
+Resultados e evidências em [Entrega e validação](docs/ENTREGA.md). As capturas ficam em `target/validacao/` após a validação completa.

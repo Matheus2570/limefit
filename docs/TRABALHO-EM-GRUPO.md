@@ -1,59 +1,42 @@
-# Trabalho em grupo no GitHub
+# Trabalho em grupo — entrega por pasta
 
-A divisão por integrante, rota, classe Java e branch está no [README](../README.md). As interfaces agora são escritas em Java com j2html. Não existem templates em `resources/views`.
+Matheus de Carvalho mantém a Home, autenticação e integração. Os cinco módulos dos colegas estão em `src/main/java/br/com/limefit/modulos/`, cada um com tela, conteúdo vazio e guia local. Todos abrem no menu desde o início, após o login.
 
-## Publicar a base
+## Ciclo de entrega
 
-Na pasta do `pom.xml`, com um repositório vazio criado no GitHub:
+1. Receba o **projeto completo**, instale o JDK e configure o banco pelo README.
+2. Crie uma branch, por exemplo `feat/perfil`, `feat/alimentos`, `feat/refeicoes`, `feat/planejamento` ou `feat/projeto-ingles`.
+3. Edite principalmente a sua pasta. Preserve nomes de arquivos, pacotes, construtores e assinaturas públicas.
+4. Execute `.mvnw.cmd compile exec:java`; teste em inglês e português, com duas contas e após sair/entrar de novo.
+5. Devolva **somente a pasta do seu módulo**, incluindo o LEIA-ME atualizado. Não inclua `target/`, `.git`, credenciais ou bibliotecas baixadas.
+6. Se precisar mudar o banco, uma classe compartilhada ou o contrato de outro módulo, descreva a proposta em um arquivo separado e combine com Matheus de Carvalho. Não faça a integração depender de uma mudança oculta.
+7. Matheus incorpora no mesmo caminho e executa `.mvnw.cmd test` e `python scripts/validar.py`.
 
-```powershell
-git init -b main
-git add .
-git commit -m "Implementa Home e autenticação Java do LimeFit"
-git remote add origin https://github.com/SEU-USUARIO/limefit.git
-git push -u origin main
+## O que já está conectado
+
+O construtor `TelaX(ContextoAplicacao contexto)` recebe os recursos. Use o `JPanel conteudo` herdado de `PainelModulo` para a interface; `BorderLayout`, `GridBagLayout`, `BoxLayout` e `GridLayout` evitam coordenadas fixas. Não crie outro JFrame para a tela.
+
+```java
+long usuarioId = contexto.usuarioId(); // Falha se não houver login.
+String nome = contexto.sessao().usuario().nome();
+contexto.navegar(Tela.REFEICOES);
+String titulo = idioma.escolher("Título", "Title");
 ```
 
-Adicione os colegas em Settings → Collaborators. Cada integrante aceita o convite antes de clonar.
+Use `Visual.botao`, `Visual.campo`, `Visual.rotulo` e `Visual.rolagem` para manter as cores e os espaçamentos. Os DAOs são criados com `contexto.conexao()` e `contexto.sessao()` no construtor da tela; não substitua a conexão por credenciais fixas.
 
-## Desenvolver um módulo
+Sobrescreva `atualizarTextos()` chamando `super.atualizarTextos()` para traduzir todos os controles e mensagens, inclusive erros já exibidos. Ela também pode ser chamada durante a construção da janela; inicialize seus componentes antes de usá-los.
 
-Exemplo para Alimentos:
+Carregue dados em `aoExibir()` (chamando `super.aoExibir()`) para atualizar após alterações de outro módulo. Execute JDBC em `SwingWorker.doInBackground()` e atualize Swing em `done()`. Não bloqueie a EDT com consultas. Antes de iniciar o trabalho, capture a revisão da sessão; descarte respostas se ela mudar ou a tela for fechada. Em `limparDados()`, esvazie campos, tabelas, seleções e caches, e invalide trabalhos antigos. `aoOcultar()` pode interromper carregamentos ligados à navegação.
 
-```powershell
-git clone https://github.com/SEU-USUARIO/limefit.git
-cd limefit
-git switch -c feat/alimentos
-```
+Os modelos são records Java imutáveis, com acesso por `perfil.pesoKg()`, `alimento.nome()` etc. Para editar, monte novos valores ou envie os parâmetros previstos no DAO. Os contratos detalhados e os nomes SQL estão em [CONTAS-E-DADOS](CONTAS-E-DADOS.md).
 
-Edite `src/main/java/br/com/limefit/modulos/alimentos/AlimentosPagina.java`. Implemente a interface em `conteudo` usando j2html, e crie modelo e DAO nessa mesma pasta. Faça ambos os idiomas com `idioma.escolher`. Os outros integrantes seguem o mesmo padrão no próprio módulo.
+## Integração entre colegas
 
-Para os estilos, edite `src/main/resources/assets/alimentos.css` e prefixe os seletores com `.pagina-alimentos`. Cada módulo tem seu próprio CSS, carregado automaticamente junto com o CSS comum. A tabela completa está no [README](../README.md#css-de-cada-módulo).
+- **Perfil** mantém um perfil por conta. Refeições usa `PerfilDao.buscarAtual()` e trata perfil ausente com convite para `Tela.PERFIL`.
+- **Alimentos** fornece `AlimentoDao.listar("")` e `buscarPorId(id)` para a seleção das porções.
+- **Refeições** mantém datas, nomes e itens. Planejamento pode consumir `listarPorData(data)` e `listarItens(refeicaoId)`.
+- **Planejamento** monta a visão por data e calcula os totais. Não há tabela extra de planejamento. Para totais consistentes, seu DAO pode consultar diretamente as tabelas existentes, usando os mesmos contratos e escopos por conta.
+- **Projeto** apresenta equipe e revisa o inglês; não precisa de DAO.
 
-Antes de escrever SQL, leia [Contas e dados](CONTAS-E-DADOS.md). O dono vem de `usuarioId(pedido)`. Alimentos também são privados. Toda consulta, alteração e exclusão deve filtrar a conta; referências de perfil, refeição e alimento precisam ter o mesmo dono.
-
-```powershell
-.\mvnw.cmd compile exec:java
-```
-
-Teste a página autenticado com duas contas, incluindo tentativa de usar um ID de registro da outra conta. Para verificar a base comum, execute `python scripts/validar.py` com o MySQL do XAMPP ligado.
-
-Depois de testar:
-
-```powershell
-git status
-git add src/main/java/br/com/limefit/modulos/alimentos
-git add src/main/resources/assets/alimentos.css
-git commit -m "Implementa alimentos por conta"
-git push -u origin HEAD
-```
-
-Inclua também CSS ou imagens próprios do módulo se houver. Abra um Pull Request para `main`. Para atualizar sua branch, faça commit do trabalho atual, rode `git fetch origin` e depois `git merge origin/main`.
-
-`web`, `autenticacao`, `banco`, `Aplicacao.java`, `pom.xml`, CSS comum e SQL são compartilhados. Coordenem mudanças nesses arquivos para facilitar a integração. Para novas mudanças de banco, adicionem outro SQL incremental, preservando os registros existentes.
-
-## Integração
-
-Perfil cria o perfil da conta, Alimentos cadastra os alimentos daquela conta, Refeições usa apenas perfil e alimentos do mesmo dono e Planejamento soma apenas as refeições desse dono por data. O pitch do módulo Projeto pode seguir gancho, solução, benefício e convite final em inglês.
-
-As páginas desta base ficam vazias de propósito, com menu e título. A demonstração integrada dos módulos será possível depois das entregas das respectivas branches.
+Não devolva alterações nos arquivos de outro colega. Coordene qualquer mudança de assinatura para que uma pasta nova continue compilando com as demais.

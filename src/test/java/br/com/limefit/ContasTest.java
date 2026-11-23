@@ -39,12 +39,10 @@ class ContasTest {
         sessao.entrar(new Usuario(22, "Bruno", "bruno@example.test"));
         assertEquals(22, consulta.id());
     }
-    @Test void contratoPendenteExigeContaENaoFingeSucesso() {
+    @Test void daoDeAlimentosExigeConta() {
         Sessao sessao = new Sessao();
         AlimentoDao dao = new AlimentoDao(new Conexao(), sessao);
         assertThrows(IllegalStateException.class, () -> dao.listar(""));
-        sessao.entrar(new Usuario(1, "Ana", "ana@example.test"));
-        assertTrue(assertThrows(UnsupportedOperationException.class, () -> dao.listar("")).getMessage().contains("implementado"));
     }
     @Test void regrasDeCadastroSaoPreservadas() {
         ServicoContas contas = new ServicoContas(new UsuarioDao(new Conexao()));

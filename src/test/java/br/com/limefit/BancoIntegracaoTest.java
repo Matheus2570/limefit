@@ -2,6 +2,8 @@ package br.com.limefit;
 
 import br.com.limefit.autenticacao.*;
 import br.com.limefit.banco.Conexao;
+import br.com.limefit.modulos.alimentos.AlimentoDao;
+import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import java.sql.*;
@@ -47,6 +49,32 @@ class BancoIntegracaoTest {
         assertEquals(0, executar("UPDATE alimentos SET nome='Inválido' WHERE id=? AND usuario_id=?", alimentoA, b));
         assertEquals(0, executar("DELETE FROM alimentos WHERE id=? AND usuario_id=?", alimentoA, b));
         assertEquals(0, executar("DELETE FROM itens_refeicao WHERE refeicao_id=? AND usuario_id=?", refeicaoA, b));
+
+        Sessao sessao = new Sessao();
+        AlimentoDao alimentos = new AlimentoDao(conexao, sessao);
+        sessao.entrar(new Usuario(a, "Conta A", "dados-a@example.test"));
+        BigDecimal energia = new BigDecimal("123.45");
+        var cadastro = alimentos.cadastrar("Pão 100%", energia, BigDecimal.ZERO, BigDecimal.TEN, BigDecimal.ONE);
+        assertEquals(cadastro, alimentos.buscarPorId(cadastro.id()).orElseThrow());
+        assertEquals(java.util.List.of(cadastro), alimentos.listar("%"));
+        assertEquals(1062, assertThrows(SQLException.class, () -> alimentos.cadastrar(
+                "Arroz", energia, BigDecimal.ZERO, BigDecimal.TEN, BigDecimal.ONE)).getErrorCode());
+        assertEquals(1451, assertThrows(SQLException.class, () -> alimentos.excluir(alimentoA)).getErrorCode());
+
+        sessao.sair();
+        sessao.entrar(new Usuario(b, "Conta B", "dados-b@example.test"));
+        assertEquals(1, alimentos.listar("").size());
+        assertEquals(alimentoB, alimentos.listar("").get(0).id());
+        assertTrue(alimentos.buscarPorId(cadastro.id()).isEmpty());
+        assertFalse(alimentos.atualizar(cadastro.id(), "Outro", energia, BigDecimal.ZERO, BigDecimal.TEN, BigDecimal.ONE));
+        assertFalse(alimentos.excluir(cadastro.id()));
+
+        sessao.sair();
+        sessao.entrar(new Usuario(a, "Conta A", "dados-a@example.test"));
+        assertTrue(alimentos.atualizar(cadastro.id(), "Pão integral", energia, BigDecimal.ZERO, BigDecimal.TEN, BigDecimal.ONE));
+        assertEquals("Pão integral", alimentos.buscarPorId(cadastro.id()).orElseThrow().nome());
+        assertTrue(alimentos.excluir(cadastro.id()));
+        assertTrue(alimentos.buscarPorId(cadastro.id()).isEmpty());
     }
     private int executar(String sql, Object... args) throws SQLException {
         try (var c = conexao.abrir(); var q = c.prepareStatement(sql)) {

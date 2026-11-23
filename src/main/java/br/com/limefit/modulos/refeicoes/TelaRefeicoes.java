@@ -144,6 +144,13 @@ public final class TelaRefeicoes extends PainelModulo {
         painel.add(Visual.rolagem(tabelaItens), BorderLayout.CENTER);
 
         JPanel adicionarItem = Visual.painel(new FlowLayout(FlowLayout.LEFT, 7, 0));
+        seletorAlimento.setRenderer(new DefaultListCellRenderer() {
+            @Override public Component getListCellRendererComponent(JList<?> lista, Object valor, int indice,
+                                                                     boolean selecionado, boolean foco) {
+                String nome = valor instanceof Alimento alimento ? alimento.nome() : "";
+                return super.getListCellRendererComponent(lista, nome, indice, selecionado, foco);
+            }
+        });
         seletorAlimento.setPreferredSize(new Dimension(190, 38));
         adicionarItem.add(seletorAlimento);
         adicionarItem.add(campoGramas);

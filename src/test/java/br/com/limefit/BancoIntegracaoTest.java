@@ -76,6 +76,54 @@ class BancoIntegracaoTest {
         assertTrue(alimentos.excluir(cadastro.id()));
         assertTrue(alimentos.buscarPorId(cadastro.id()).isEmpty());
     }
+    @Test void perfilRefeicoesETotaisMantemContaEPrecisao() throws Exception {
+        var usuarios=new UsuarioDao(conexao);
+        usuarios.cadastrar("Plano A","plano-a@example.test","SenhaTeste-123");
+        usuarios.cadastrar("Plano B","plano-b@example.test","SenhaTeste-123");
+        Usuario a=usuarios.autenticar("plano-a@example.test","SenhaTeste-123");
+        Usuario b=usuarios.autenticar("plano-b@example.test","SenhaTeste-123");
+        Sessao sessao=new Sessao(); sessao.entrar(a);
+        var perfis=new br.com.limefit.modulos.perfil.PerfilDao(conexao,sessao);
+        var alimentos=new AlimentoDao(conexao,sessao);
+        var refeicoes=new br.com.limefit.modulos.refeicoes.RefeicaoDao(conexao,sessao);
+        var planos=new br.com.limefit.modulos.planejamento.PlanejamentoDao(conexao,sessao);
+        var data=java.time.LocalDate.of(2026,11,26);
+        assertTrue(perfis.buscarAtual().isEmpty());
+        var perfil=perfis.salvar(new BigDecimal("70.50"),new BigDecimal("175"),br.com.limefit.modulos.perfil.Objetivo.MANTER);
+        assertEquals(64,perfil.identificador().length());
+        var atualizado=perfis.salvar(new BigDecimal("71"),new BigDecimal("175"),br.com.limefit.modulos.perfil.Objetivo.GANHAR_MASSA);
+        assertEquals(perfil.id(),atualizado.id()); assertEquals(perfil.identificador(),atualizado.identificador());
+        var alimento=alimentos.cadastrar("Aveia teste",new BigDecimal("389.25"),new BigDecimal("13.50"),new BigDecimal("66"),new BigDecimal("7"));
+        var refeicao=refeicoes.cadastrar(perfil.id(),data,"Breakfast");
+        assertEquals(a.id(),refeicao.usuarioId());
+        refeicoes.definirPorcao(refeicao.id(),alimento.id(),new BigDecimal("150.50"));
+        var plano=planos.buscarPorData(data);
+        assertEquals(java.util.List.of(refeicao),plano.refeicoes());
+        assertEquals(0,new BigDecimal("585.82125").compareTo(plano.totais().calorias()));
+        assertEquals(0,new BigDecimal("20.3175").compareTo(plano.totais().proteinas()));
+        assertEquals(0,new BigDecimal("99.33").compareTo(plano.totais().carboidratos()));
+        assertEquals(0,new BigDecimal("10.535").compareTo(plano.totais().gorduras()));
+        refeicoes.definirPorcao(refeicao.id(),alimento.id(),new BigDecimal("100"));
+        assertEquals(1,refeicoes.listarItens(refeicao.id()).size());
+        assertEquals(0,alimento.calorias().compareTo(planos.calcularTotais(data).calorias()));
+        sessao.entrar(b);
+        assertTrue(perfis.buscarAtual().isEmpty()); assertTrue(planos.buscarPorData(data).refeicoes().isEmpty());
+        assertEquals(0,planos.calcularTotais(data).calorias().signum());
+        assertTrue(refeicoes.buscarPorId(refeicao.id()).isEmpty()); assertTrue(refeicoes.listarItens(refeicao.id()).isEmpty());
+        assertFalse(refeicoes.excluir(refeicao.id())); assertFalse(refeicoes.removerItem(refeicao.id(),alimento.id()));
+        assertThrows(SQLException.class,() -> refeicoes.cadastrar(perfil.id(),data,"Forbidden"));
+        var perfilB=perfis.salvar(new BigDecimal("80"),new BigDecimal("180"),br.com.limefit.modulos.perfil.Objetivo.MANTER);
+        var refeicaoB=refeicoes.cadastrar(perfilB.id(),data,"Lunch B");
+        assertThrows(SQLException.class,() -> refeicoes.definirPorcao(refeicaoB.id(),alimento.id(),BigDecimal.TEN));
+        sessao.entrar(a);
+        assertTrue(refeicoes.atualizar(refeicao.id(),data.plusDays(1),"Moved"));
+        assertEquals(0,planos.calcularTotais(data).calorias().signum());
+        assertEquals(1,planos.buscarPorData(data.plusDays(1)).refeicoes().size());
+        assertTrue(perfis.excluirAtual()); assertTrue(refeicoes.listarItens(refeicao.id()).isEmpty());
+        assertTrue(planos.buscarPorData(data.plusDays(1)).refeicoes().isEmpty());
+        assertTrue(alimentos.buscarPorId(alimento.id()).isPresent());
+        sessao.entrar(b); assertEquals(1,refeicoes.listarPorData(data).size());
+    }
     private int executar(String sql, Object... args) throws SQLException {
         try (var c = conexao.abrir(); var q = c.prepareStatement(sql)) {
             for (int i = 0; i < args.length; i++) q.setObject(i + 1, args[i]);

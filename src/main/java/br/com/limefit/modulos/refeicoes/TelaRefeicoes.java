@@ -14,21 +14,24 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.math.BigDecimal;
-import java.sql.SQLException;
 import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 
 /** Tela de organização das refeições diárias da conta autenticada. */
 public final class TelaRefeicoes extends PainelModulo {
-    private final RefeicaoDao dao;
-    private final AlimentoDao alimentos;
-    private final PerfilDao perfis;
+    private final JLabel rotuloData=Visual.rotulo();
+    private final JLabel tituloLista=Visual.titulo(19), tituloDetalhes=Visual.titulo(19);
+    private final JButton editar=Visual.botao("refeicoes.editar",false);
+    private final JButton novo=Visual.botao("refeicoes.novo",false);
+    private SwingWorker<?,?> trabalho;
+    private java.util.List<DetalheItem> itens=java.util.List.of();
+    private String avisoPt="",avisoEn="";
+    private boolean erro;
+    private boolean temPerfil;
 
     private final JTextField campoData = Visual.campo(new JTextField(10), "refeicoes.data", 10);
-    private final JTextField campoNome = Visual.campo(new JTextField(18), "refeicoes.nome", 60);
+    private final JTextField campoNome = Visual.campo(new JTextField(18), "refeicoes.nome", 100);
     private final JButton adicionar = Visual.botao("refeicoes.adicionar", true);
     private final JButton excluir = Visual.botao("refeicoes.excluir", false);
     private final JButton atualizar = Visual.botao("refeicoes.atualizar", false);
@@ -45,15 +48,12 @@ public final class TelaRefeicoes extends PainelModulo {
     private final JButton incluirItem = Visual.botao("refeicoes.incluirItem", true);
     private final JButton removerItem = Visual.botao("refeicoes.removerItem", false);
     private Refeicao selecionada;
-    private long trabalhoAtual;
+
 
     public TelaRefeicoes(ContextoAplicacao contexto) {
         super(contexto, Tela.REFEICOES);
-        dao = new RefeicaoDao(contexto.conexao(), contexto.sessao());
-        alimentos = new AlimentoDao(contexto.conexao(), contexto.sessao());
-        perfis = new PerfilDao(contexto.conexao(), contexto.sessao());
         montarInterface();
-        atualizarTextos();
+        atualizarTextos(); controles();
     }
 
     private void montarInterface() {
@@ -62,7 +62,7 @@ public final class TelaRefeicoes extends PainelModulo {
 
         JPanel topo = Visual.painel(new BorderLayout(12, 8));
         JPanel filtros = Visual.painel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        filtros.add(rotuloForte("Data / Date"));
+        rotuloData.setLabelFor(campoData); filtros.add(rotuloData);
         campoData.setText(LocalDate.now().toString());
         filtros.add(campoData);
         atualizar.setText("Atualizar");
@@ -72,15 +72,19 @@ public final class TelaRefeicoes extends PainelModulo {
         topo.add(resumo, BorderLayout.EAST);
         raiz.add(topo, BorderLayout.NORTH);
 
-        JPanel corpo = Visual.painel(new GridBagLayout());
-        GridBagConstraints c = new GridBagConstraints();
-        c.insets = new Insets(0, 0, 0, 14);
-        c.fill = GridBagConstraints.BOTH;
-        c.weighty = 1;
-        c.gridx = 0; c.gridy = 0; c.weightx = .38;
-        corpo.add(painelLista(), c);
-        c.gridx = 1; c.weightx = .62; c.insets = new Insets(0, 0, 0, 0);
-        corpo.add(painelDetalhes(), c);
+        JPanel corpo = Visual.painel(new GridLayout(1,2,14,14));
+        corpo.add(painelLista()); corpo.add(painelDetalhes());
+        corpo.setPreferredSize(new Dimension(800,380));
+        corpo.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override public void componentResized(java.awt.event.ComponentEvent e) {
+                GridLayout layout=(GridLayout)corpo.getLayout();
+                int linhas=corpo.getWidth()<1000?2:1;
+                if(layout.getRows()!=linhas) {
+                    layout.setRows(linhas); layout.setColumns(linhas==2?1:2);
+                    corpo.setPreferredSize(new Dimension(800,linhas==2?740:380)); corpo.revalidate();
+                }
+            }
+        });
         raiz.add(corpo, BorderLayout.CENTER);
         mensagem.setBorder(new EmptyBorder(4, 2, 0, 2));
         raiz.add(mensagem, BorderLayout.SOUTH);
@@ -95,16 +99,19 @@ public final class TelaRefeicoes extends PainelModulo {
         incluirItem.addActionListener(e -> incluirAlimento());
         removerItem.addActionListener(e -> removerAlimento());
         campoData.addActionListener(e -> carregarRefeicoes());
+        editar.addActionListener(e -> editarRefeicao());
+        novo.addActionListener(e -> { listaRefeicoes.clearSelection(); campoNome.setText(""); });
+        tabelaItens.getSelectionModel().addListSelectionListener(e -> controles());
     }
 
     private JPanel painelLista() {
         JPanel painel = cartao(new BorderLayout(8, 12));
         JPanel cabecalho = Visual.painel(new BorderLayout(4, 8));
-        cabecalho.add(tituloSecao("Refeições do dia", 19), BorderLayout.NORTH);
-        JPanel novo = Visual.painel(new BorderLayout(6, 0));
-        novo.add(campoNome, BorderLayout.CENTER);
-        novo.add(adicionar, BorderLayout.EAST);
-        cabecalho.add(novo, BorderLayout.SOUTH);
+        cabecalho.add(tituloLista, BorderLayout.NORTH);
+        JPanel formularioNovo = Visual.painel(new BorderLayout(6, 0));
+        formularioNovo.add(campoNome, BorderLayout.CENTER);
+        formularioNovo.add(adicionar, BorderLayout.EAST);
+        cabecalho.add(formularioNovo, BorderLayout.SOUTH);
         painel.add(cabecalho, BorderLayout.NORTH);
         listaRefeicoes.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         listaRefeicoes.setBackground(Visual.PAINEL);
@@ -123,7 +130,8 @@ public final class TelaRefeicoes extends PainelModulo {
         });
         painel.add(Visual.rolagem(listaRefeicoes), BorderLayout.CENTER);
         JPanel rodape = Visual.painel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        rodape.add(excluir);
+        rodape.setLayout(new GridLayout(0,1,0,6));
+        rodape.add(novo); rodape.add(editar); rodape.add(excluir);
         painel.add(rodape, BorderLayout.SOUTH);
         return painel;
     }
@@ -131,8 +139,14 @@ public final class TelaRefeicoes extends PainelModulo {
     private JPanel painelDetalhes() {
         JPanel painel = cartao(new BorderLayout(8, 12));
         JPanel cabecalho = Visual.painel(new BorderLayout());
-        cabecalho.add(tituloSecao("Alimentos da refeição", 19), BorderLayout.WEST);
+        cabecalho.add(tituloDetalhes, BorderLayout.WEST);
         painel.add(cabecalho, BorderLayout.NORTH);
+        listaRefeicoes.setName("refeicoes.lista");
+        seletorAlimento.setName("refeicoes.alimento");
+        tabelaItens.setName("refeicoes.itens");
+        mensagem.setName("refeicoes.status");
+        tabelaItens.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        tabelaItens.getTableHeader().setReorderingAllowed(false);
         tabelaItens.setRowHeight(34);
         tabelaItens.setFillsViewportHeight(true);
         tabelaItens.setBackground(Visual.PAINEL);
@@ -143,20 +157,26 @@ public final class TelaRefeicoes extends PainelModulo {
         tabelaItens.getTableHeader().setForeground(Visual.SUAVE);
         painel.add(Visual.rolagem(tabelaItens), BorderLayout.CENTER);
 
-        JPanel adicionarItem = Visual.painel(new FlowLayout(FlowLayout.LEFT, 7, 0));
+        JPanel adicionarItem = Visual.painel(new GridLayout(0,1,0,8));
         seletorAlimento.setRenderer(new DefaultListCellRenderer() {
             @Override public Component getListCellRendererComponent(JList<?> lista, Object valor, int indice,
                                                                      boolean selecionado, boolean foco) {
                 String nome = valor instanceof Alimento alimento ? alimento.nome() : "";
-                return super.getListCellRendererComponent(lista, nome, indice, selecionado, foco);
+                Component componente=super.getListCellRendererComponent(lista, nome, indice, selecionado, foco);
+                componente.setBackground(selecionado?new Color(0x34472A):Visual.PAINEL);
+                componente.setForeground(Visual.TEXTO);
+                return componente;
             }
         });
         seletorAlimento.setPreferredSize(new Dimension(190, 38));
+        seletorAlimento.setBackground(Visual.PAINEL); seletorAlimento.setForeground(Visual.TEXTO);
         adicionarItem.add(seletorAlimento);
-        adicionarItem.add(campoGramas);
-        adicionarItem.add(new JLabel("g"));
-        adicionarItem.add(incluirItem);
-        adicionarItem.add(removerItem);
+        JPanel porcao=Visual.painel(new BorderLayout(8,0));
+        porcao.add(campoGramas,BorderLayout.CENTER);
+        JLabel unidade=Visual.rotulo(); unidade.setText("g"); porcao.add(unidade,BorderLayout.EAST);
+        adicionarItem.add(porcao);
+        JPanel acoes=Visual.painel(new GridLayout(1,2,8,0)); acoes.add(incluirItem); acoes.add(removerItem);
+        adicionarItem.add(acoes);
         painel.add(adicionarItem, BorderLayout.SOUTH);
         return painel;
     }
@@ -169,184 +189,156 @@ public final class TelaRefeicoes extends PainelModulo {
                 BorderFactory.createLineBorder(Visual.LINHA), new EmptyBorder(16, 16, 16, 16)));
         return p;
     }
-    private JLabel rotuloForte(String texto) { JLabel l = new JLabel(texto); l.setForeground(Visual.TEXTO); l.setFont(Visual.fonte(14, Font.BOLD)); return l; }
-    private JLabel tituloSecao(String texto, int tamanho) { JLabel l = Visual.titulo(tamanho); l.setText(texto); return l; }
 
-    @Override public void aoExibir() {
-        super.aoExibir();
-        carregarRefeicoes();
-        carregarAlimentos();
-    }
+    private record DadosDia(List<Refeicao> refeicoes,List<Alimento> alimentos,boolean temPerfil) {}
+    private record DetalheItem(ItemRefeicao item,Alimento alimento) {}
+
+    @Override public void aoExibir() { super.aoExibir(); carregarRefeicoes(); }
 
     private LocalDate dataSelecionada() {
-        try { return LocalDate.parse(campoData.getText().trim()); }
-        catch (DateTimeParseException e) { throw new IllegalArgumentException(idioma.escolher("Informe a data no formato AAAA-MM-DD.", "Enter the date as YYYY-MM-DD.")); }
+        LocalDate data=LocalDate.parse(campoData.getText().strip());
+        if(data.getYear()<1000||data.getYear()>9999) throw new IllegalArgumentException();
+        return data;
     }
-
     private void carregarRefeicoes() {
+        if(trabalho!=null) return;
         final LocalDate data;
-        try { data = dataSelecionada(); }
-        catch (IllegalArgumentException e) { mostrarMensagem(e.getMessage(), true); return; }
-        final long revisao = contexto.sessao().revisao();
-        final long idTrabalho = ++trabalhoAtual;
-        mostrarMensagem(idioma.escolher("Carregando refeições...", "Loading meals..."), false);
-        new SwingWorker<List<Refeicao>, Void>() {
-            @Override protected List<Refeicao> doInBackground() throws Exception { return dao.listarPorData(data); }
-            @Override protected void done() {
-                if (idTrabalho != trabalhoAtual || revisao != contexto.sessao().revisao() || !contexto.sessao().autenticada()) return;
-                try {
-                    List<Refeicao> dados = get();
-                    modeloRefeicoes.clear();
-                    dados.forEach(modeloRefeicoes::addElement);
-                    selecionada = null;
-                    limparItens();
-                    resumo.setText(dados.size() + " " + idioma.escolher("refeições", "meals"));
-                    mostrarMensagem("", false);
-                } catch (Exception e) { tratarErro(e); }
-            }
-        }.execute();
+        try { data=dataSelecionada(); }
+        catch(RuntimeException e) { informar("Informe a data no formato AAAA-MM-DD.","Enter the date as YYYY-MM-DD.",true); return; }
+        executar(sessao -> {
+            RefeicaoDao dao=new RefeicaoDao(contexto.conexao(),sessao);
+            return new DadosDia(dao.listarPorData(data),new AlimentoDao(contexto.conexao(),sessao).listar(""),
+                    new PerfilDao(contexto.conexao(),sessao).buscarAtual().isPresent());
+        }, dados -> {
+            listaRefeicoes.clearSelection(); modeloRefeicoes.clear(); dados.refeicoes().forEach(modeloRefeicoes::addElement);
+            seletorAlimento.removeAllItems(); dados.alimentos().forEach(seletorAlimento::addItem);
+            temPerfil=dados.temPerfil(); selecionada=null; limparItens(); campoNome.setText(""); atualizarResumo();
+            if(!temPerfil) informar("Complete seu perfil na tela Perfil antes de criar refeições.","Complete your profile on the Profile screen before adding meals.",false);
+            else if(dados.alimentos().isEmpty()) informar("Cadastre alimentos na tela Alimentos para montar suas refeições.","Add foods on the Foods screen to build your meals.",false);
+            else informar("","",false);
+        });
     }
-
-    private void carregarAlimentos() {
-        final long revisao = contexto.sessao().revisao();
-        new SwingWorker<List<Alimento>, Void>() {
-            @Override protected List<Alimento> doInBackground() throws Exception { return alimentos.listar(""); }
-            @Override protected void done() {
-                if (revisao != contexto.sessao().revisao() || !contexto.sessao().autenticada()) return;
-                try {
-                    seletorAlimento.removeAllItems();
-                    for (Alimento alimento : get()) seletorAlimento.addItem(alimento);
-                } catch (Exception e) { tratarErro(e); }
-            }
-        }.execute();
-    }
-
     private void selecionarRefeicao(Refeicao refeicao) {
-        selecionada = refeicao;
-        limparItens();
-        if (refeicao == null) return;
-        final long revisao = contexto.sessao().revisao();
-        new SwingWorker<List<ItemRefeicao>, Void>() {
-            @Override protected List<ItemRefeicao> doInBackground() throws Exception { return dao.listarItens(refeicao.id()); }
-            @Override protected void done() {
-                if (revisao != contexto.sessao().revisao() || selecionada != refeicao || !contexto.sessao().autenticada()) return;
-                try {
-                    for (ItemRefeicao item : get()) {
-                        Optional<Alimento> alimento = alimentos.buscarPorId(item.alimentoId());
-                        if (alimento.isPresent()) {
-                            Alimento a = alimento.get();
-                            BigDecimal fator = item.quantidadeG().divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
-                            modeloItens.addRow(new Object[]{a.nome(), item.quantidadeG() + " g", formatar(a.calorias().multiply(fator)), formatar(a.proteinas().multiply(fator)) + " g"});
-                        }
-                    }
-                } catch (Exception e) { tratarErro(e); }
+        if(trabalho!=null) return;
+        selecionada=refeicao; limparItens();
+        if(refeicao==null) { campoNome.setText(""); controles(); return; }
+        campoNome.setText(refeicao.nome());
+        executar(sessao -> {
+            RefeicaoDao dao=new RefeicaoDao(contexto.conexao(),sessao);
+            AlimentoDao alimentos=new AlimentoDao(contexto.conexao(),sessao);
+            List<DetalheItem> resultado=new java.util.ArrayList<>();
+            for(ItemRefeicao item:dao.listarItens(refeicao.id())) {
+                Optional<Alimento> alimento=alimentos.buscarPorId(item.alimentoId());
+                if(alimento.isPresent()) resultado.add(new DetalheItem(item,alimento.orElseThrow()));
             }
-        }.execute();
+            return resultado;
+        }, dados -> { itens=List.copyOf(dados); mostrarItens(); informar("","",false); });
     }
-
-    private void criarRefeicao() {
-        String nome = campoNome.getText().trim();
-        if (nome.isEmpty()) { mostrarMensagem(idioma.escolher("Digite o nome da refeição.", "Enter a meal name."), true); return; }
+    private void criarRefeicao() { gravarRefeicao(false); }
+    private void editarRefeicao() { gravarRefeicao(true); }
+    private void gravarRefeicao(boolean edicao) {
+        if(trabalho!=null || (edicao&&selecionada==null)) return;
+        String nome=campoNome.getText().strip();
+        if(nome.isEmpty()||nome.length()>100) { informar("Informe um nome de 1 a 100 caracteres.","Enter a name from 1 to 100 characters.",true); return; }
         final LocalDate data;
-        try { data = dataSelecionada(); } catch (IllegalArgumentException e) { mostrarMensagem(e.getMessage(), true); return; }
-        final long revisao = contexto.sessao().revisao();
-        new SwingWorker<Refeicao, Void>() {
-            @Override protected Refeicao doInBackground() throws Exception {
-                Perfil perfil = perfis.buscarAtual().orElseThrow(() -> new IllegalStateException(idioma.escolher("Complete seu perfil antes de cadastrar refeições.", "Complete your profile before adding meals.")));
-                return dao.cadastrar(perfil.id(), data, nome);
-            }
-            @Override protected void done() {
-                if (revisao != contexto.sessao().revisao() || !contexto.sessao().autenticada()) return;
-                try { get(); campoNome.setText(""); carregarRefeicoes(); }
-                catch (Exception e) { tratarErro(e); }
-            }
-        }.execute();
+        try { data=dataSelecionada(); }
+        catch(RuntimeException e) { informar("Informe a data no formato AAAA-MM-DD.","Enter the date as YYYY-MM-DD.",true); return; }
+        Refeicao alvo=selecionada;
+        executar(sessao -> {
+            RefeicaoDao dao=new RefeicaoDao(contexto.conexao(),sessao);
+            if(edicao) return dao.atualizar(alvo.id(),data,nome);
+            Perfil perfil=new PerfilDao(contexto.conexao(),sessao).buscarAtual().orElseThrow(() -> new IllegalArgumentException("profile"));
+            dao.cadastrar(perfil.id(),data,nome); return true;
+        }, salvo -> carregarRefeicoes());
     }
-
     private void excluirRefeicao() {
-        if (selecionada == null) { mostrarMensagem(idioma.escolher("Selecione uma refeição.", "Select a meal."), true); return; }
-        int resposta = JOptionPane.showConfirmDialog(this,
-                idioma.escolher("Excluir a refeição selecionada?", "Delete the selected meal?"),
-                idioma.escolher("Confirmar exclusão", "Confirm deletion"), JOptionPane.YES_NO_OPTION);
-        if (resposta != JOptionPane.YES_OPTION) return;
-        Refeicao alvo = selecionada;
-        long revisao = contexto.sessao().revisao();
-        new SwingWorker<Boolean, Void>() {
-            @Override protected Boolean doInBackground() throws Exception { return dao.excluir(alvo.id()); }
-            @Override protected void done() {
-                if (revisao != contexto.sessao().revisao() || !contexto.sessao().autenticada()) return;
-                try { get(); carregarRefeicoes(); } catch (Exception e) { tratarErro(e); }
-            }
-        }.execute();
+        if(selecionada==null||trabalho!=null) return;
+        if(JOptionPane.showConfirmDialog(this,idioma.escolher("Excluir a refeição e todos os seus itens?","Delete the meal and all its items?"),
+                excluir.getText(),JOptionPane.YES_NO_OPTION)!=JOptionPane.YES_OPTION) return;
+        Refeicao alvo=selecionada;
+        executar(s -> new RefeicaoDao(contexto.conexao(),s).excluir(alvo.id()), removido -> carregarRefeicoes());
     }
-
     private void incluirAlimento() {
-        if (selecionada == null) { mostrarMensagem(idioma.escolher("Selecione uma refeição primeiro.", "Select a meal first."), true); return; }
-        Alimento alimento = (Alimento) seletorAlimento.getSelectedItem();
-        if (alimento == null) { mostrarMensagem(idioma.escolher("Cadastre alimentos na tela Alimentos.", "Add foods on the Foods screen."), true); return; }
+        if(trabalho!=null||selecionada==null) return;
+        Alimento alimento=(Alimento)seletorAlimento.getSelectedItem();
+        if(alimento==null) return;
+        final BigDecimal gramas;
         try {
-            BigDecimal gramas = new BigDecimal(campoGramas.getText().trim());
-            if (gramas.signum() <= 0 || gramas.compareTo(new BigDecimal("10000")) > 0) throw new NumberFormatException();
-            Refeicao alvo = selecionada;
-            long revisao = contexto.sessao().revisao();
-            new SwingWorker<Void, Void>() {
-                @Override protected Void doInBackground() throws Exception { dao.definirPorcao(alvo.id(), alimento.id(), gramas); return null; }
-                @Override protected void done() { if (revisao == contexto.sessao().revisao() && contexto.sessao().autenticada()) try { get(); selecionarRefeicao(alvo); } catch (Exception e) { tratarErro(e); } }
-            }.execute();
-        } catch (NumberFormatException e) { mostrarMensagem(idioma.escolher("Use uma quantidade entre 0 e 10000 gramas.", "Enter an amount between 0 and 10000 grams."), true); }
+            String texto=campoGramas.getText().strip().replace(',','.');
+            if(!texto.matches("[0-9]+(?:[.][0-9]{1,2})?")) throw new NumberFormatException();
+            gramas=new BigDecimal(texto);
+            if(gramas.signum()<=0||gramas.compareTo(new BigDecimal("10000"))>0) throw new NumberFormatException();
+        } catch(NumberFormatException e) {
+            informar("Informe uma porção maior que 0 e até 10000 g, com até duas casas decimais.",
+                    "Enter a portion greater than 0 and up to 10000 g, with up to two decimal places.",true); return;
+        }
+        Refeicao alvo=selecionada;
+        executar(s -> { new RefeicaoDao(contexto.conexao(),s).definirPorcao(alvo.id(),alimento.id(),gramas); return true; },
+                salvo -> selecionarRefeicao(alvo));
     }
-
     private void removerAlimento() {
-        if (selecionada == null || tabelaItens.getSelectedRow() < 0) { mostrarMensagem(idioma.escolher("Selecione um alimento da lista.", "Select a food from the list."), true); return; }
-        int linha = tabelaItens.convertRowIndexToModel(tabelaItens.getSelectedRow());
-        String nome = String.valueOf(modeloItens.getValueAt(linha, 0));
-        Alimento alimento = (Alimento) seletorAlimento.getSelectedItem();
-        if (alimento == null || !alimento.nome().equals(nome)) {
-            try { alimento = alimentos.listar("").stream().filter(a -> a.nome().equals(nome)).findFirst().orElse(null); }
-            catch (SQLException e) { mostrarMensagem(e.getMessage(), true); return; }
+        int linha=tabelaItens.getSelectedRow();
+        if(trabalho!=null||selecionada==null||linha<0) return;
+        ItemRefeicao item=itens.get(tabelaItens.convertRowIndexToModel(linha)).item();
+        Refeicao alvo=selecionada;
+        executar(s -> new RefeicaoDao(contexto.conexao(),s).removerItem(alvo.id(),item.alimentoId()),
+                removido -> selecionarRefeicao(alvo));
+    }
+    private <T> void executar(OperacaoDaConta<T> op,java.util.function.Consumer<T> concluir) {
+        if(trabalho!=null) return;
+        informar("Carregando…","Loading…",false);
+        trabalho=executarNaConta(op,valor -> { trabalho=null; concluir.accept(valor); controles(); },falha -> {
+            trabalho=null;
+            if(falha instanceof IllegalArgumentException) informar("Complete seu perfil antes de criar refeições.","Complete your profile before adding meals.",true);
+            else informar("Não foi possível concluir a operação. Confira o MySQL e atualize os dados.",
+                    "Could not complete the operation. Check MySQL and refresh the data.",true);
+            controles();
+        });
+        controles();
+    }
+    private void controles() {
+        boolean livre=trabalho==null;
+        campoData.setEnabled(livre); campoNome.setEnabled(livre); atualizar.setEnabled(livre);
+        listaRefeicoes.setEnabled(livre); tabelaItens.setEnabled(livre); novo.setEnabled(livre);
+        adicionar.setEnabled(livre&&temPerfil); editar.setEnabled(livre&&selecionada!=null); excluir.setEnabled(livre&&selecionada!=null);
+        seletorAlimento.setEnabled(livre); campoGramas.setEnabled(livre);
+        incluirItem.setEnabled(livre&&selecionada!=null&&seletorAlimento.getItemCount()>0);
+        removerItem.setEnabled(livre&&selecionada!=null&&tabelaItens.getSelectedRow()>=0);
+    }
+    private void limparItens() { itens=List.of(); modeloItens.setRowCount(0); }
+    private void mostrarItens() {
+        modeloItens.setRowCount(0);
+        for(DetalheItem detalhe:itens) {
+            Alimento a=detalhe.alimento(); BigDecimal g=detalhe.item().quantidadeG();
+            modeloItens.addRow(new Object[]{a.nome(),formatar(g)+" g",formatar(a.calorias().multiply(g).movePointLeft(2)),
+                    formatar(a.proteinas().multiply(g).movePointLeft(2))+" g"});
         }
-        if (alimento == null) return;
-        Refeicao alvo = selecionada;
-        Alimento escolhido = alimento;
-        long revisao = contexto.sessao().revisao();
-        new SwingWorker<Boolean, Void>() {
-            @Override protected Boolean doInBackground() throws Exception { return dao.removerItem(alvo.id(), escolhido.id()); }
-            @Override protected void done() { if (revisao == contexto.sessao().revisao() && contexto.sessao().autenticada()) try { get(); selecionarRefeicao(alvo); } catch (Exception e) { tratarErro(e); } }
-        }.execute();
     }
-
-    private void limparItens() { modeloItens.setRowCount(0); }
-    private String formatar(BigDecimal valor) { return valor.setScale(1, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString(); }
-    private void mostrarMensagem(String texto, boolean erro) { mensagem.setText(texto); mensagem.setForeground(erro ? Visual.ERRO : Visual.SUAVE); }
-    private void tratarErro(Exception erro) {
-        Throwable causa = erro;
-        if (erro instanceof ExecutionException && erro.getCause() != null) causa = erro.getCause();
-        String detalhe = causa.getMessage() == null ? causa.getClass().getSimpleName() : causa.getMessage();
-        mostrarMensagem(detalhe, true);
+    private String formatar(BigDecimal valor) {
+        String n=valor.setScale(2,java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+        return idioma.escolher(n.replace('.',','),n);
     }
-
+    private void informar(String pt,String en,boolean falha) {
+        avisoPt=pt; avisoEn=en; erro=falha; mensagem.setText(idioma.escolher(pt,en)); mensagem.setForeground(falha?Visual.ERRO:Visual.SUAVE);
+    }
+    private void atualizarResumo() { resumo.setText(modeloRefeicoes.size()+" "+idioma.escolher("refeições","meals")); }
     @Override public void atualizarTextos() {
-        super.atualizarTextos();
-        adicionar.setText(idioma.escolher("+ Criar", "+ Add meal"));
-        excluir.setText(idioma.escolher("Excluir refeição", "Delete meal"));
-        atualizar.setText(idioma.escolher("Atualizar", "Refresh"));
-        incluirItem.setText(idioma.escolher("Adicionar", "Add food"));
-        removerItem.setText(idioma.escolher("Remover", "Remove"));
-        if (resumo.getText().matches("\\d+ .*")) {
-            String quantidade = resumo.getText().split(" ")[0];
-            resumo.setText(quantidade + " " + idioma.escolher("refeições", "meals"));
-        }
-        repaint();
+        super.atualizarTextos(); rotuloData.setText(idioma.escolher("Data (AAAA-MM-DD)","Date (YYYY-MM-DD)"));
+        tituloLista.setText(idioma.escolher("Refeições do dia","Meals of the day"));
+        tituloDetalhes.setText(idioma.escolher("Alimentos da refeição","Foods in the meal"));
+        adicionar.setText(idioma.escolher("+ Criar","+ Add meal")); editar.setText(idioma.escolher("Salvar nome e data","Save name and date"));
+        novo.setText(idioma.escolher("Nova refeição","New meal")); excluir.setText(idioma.escolher("Excluir refeição","Delete meal"));
+        atualizar.setText(idioma.escolher("Atualizar","Refresh")); incluirItem.setText(idioma.escolher("Definir porção","Set portion"));
+        removerItem.setText(idioma.escolher("Remover","Remove"));
+        String[] colunas={idioma.escolher("Alimento","Food"),idioma.escolher("Porção","Portion"),
+                idioma.escolher("Calorias (kcal)","Calories (kcal)"),idioma.escolher("Proteínas","Protein")};
+        for(int i=0;i<4;i++) tabelaItens.getColumnModel().getColumn(i).setHeaderValue(colunas[i]);
+        tabelaItens.getTableHeader().repaint(); mostrarItens(); atualizarResumo(); informar(avisoPt,avisoEn,erro);
     }
-
     @Override public void limparDados() {
-        trabalhoAtual++;
-        modeloRefeicoes.clear();
-        limparItens();
-        seletorAlimento.removeAllItems();
-        selecionada = null;
-        campoNome.setText("");
-        resumo.setText("0 " + idioma.escolher("refeições", "meals"));
-        mostrarMensagem("", false);
+        if(trabalho!=null) trabalho.cancel(false);
+        trabalho=null; selecionada=null; temPerfil=false; modeloRefeicoes.clear(); limparItens(); seletorAlimento.removeAllItems();
+        campoNome.setText(""); campoData.setText(LocalDate.now().toString()); campoGramas.setText("100");
+        atualizarResumo(); informar("","",false); controles();
     }
 }

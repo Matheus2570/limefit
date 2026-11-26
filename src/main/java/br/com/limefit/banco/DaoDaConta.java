@@ -2,7 +2,7 @@ package br.com.limefit.banco;
 
 import br.com.limefit.autenticacao.Sessao;
 
-/** Base dos contratos futuros. Não captura a identidade no construtor. */
+/** Base dos DAOs privados. Consulta a identidade no início de cada operação. */
 public abstract class DaoDaConta {
     protected final Conexao conexao;
     private final Sessao sessao;
@@ -11,8 +11,4 @@ public abstract class DaoDaConta {
         this.sessao = sessao;
     }
     protected final long usuarioId() { return sessao.exigirUsuarioId(); }
-    protected final UnsupportedOperationException pendente(String metodo) {
-        usuarioId();
-        return new UnsupportedOperationException(metodo + ": ainda precisa ser implementado / must still be implemented.");
-    }
 }

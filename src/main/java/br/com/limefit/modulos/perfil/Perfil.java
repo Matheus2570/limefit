@@ -6,6 +6,8 @@ import java.math.BigDecimal;
 public record Perfil(long id, long usuarioId, String identificador, BigDecimal pesoKg,
                      BigDecimal alturaCm, Objetivo objetivo) {
     public BigDecimal calcularImc() {
-        throw new UnsupportedOperationException("IMC ainda precisa ser implementado / BMI must still be implemented.");
+        if (pesoKg == null || alturaCm == null || pesoKg.signum() <= 0 || alturaCm.signum() <= 0)
+            throw new IllegalStateException("Peso e altura devem ser positivos / Weight and height must be positive.");
+        return pesoKg.divide(alturaCm.movePointLeft(2).pow(2), 2, java.math.RoundingMode.HALF_UP);
     }
 }

@@ -42,7 +42,7 @@ public final class RefeicaoDao extends DaoDaConta {
         try (Connection c = conexao.abrir(); PreparedStatement p = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             p.setDate(1, Date.valueOf(data)); p.setString(2, nome.trim()); p.setLong(3, perfilId); p.setLong(4, dono);
             if (p.executeUpdate() != 1) throw new SQLException("Perfil não encontrado nesta conta / Profile not found in this account.");
-            try (ResultSet r = p.getGeneratedKeys()) { if (!r.next()) throw new SQLException("Não foi possível obter o ID da refeição."); return buscarPorId(r.getLong(1)).orElseThrow(() -> new SQLException("Refeição não encontrada após cadastro.")); }
+            try (ResultSet r = p.getGeneratedKeys()) { if (!r.next()) throw new SQLException("Não foi possível obter o ID da refeição."); return new Refeicao(r.getLong(1), dono, perfilId, data, nome.trim()); }
         }
     }
 
@@ -75,7 +75,7 @@ public final class RefeicaoDao extends DaoDaConta {
 
     public void definirPorcao(long refeicaoId, long alimentoId, BigDecimal quantidadeG) throws SQLException {
         long dono = usuarioId();
-        if (quantidadeG == null || quantidadeG.signum() <= 0 || quantidadeG.compareTo(new BigDecimal("10000")) > 0)
+        if (quantidadeG == null || quantidadeG.stripTrailingZeros().scale() > 2 || quantidadeG.signum() <= 0 || quantidadeG.compareTo(new BigDecimal("10000")) > 0)
             throw new IllegalArgumentException("A porção deve ser maior que zero e até 10000 g.");
         String verificar = "SELECT (SELECT COUNT(*) FROM refeicoes WHERE id = ? AND usuario_id = ?) AS refeicao_ok, (SELECT COUNT(*) FROM alimentos WHERE id = ? AND usuario_id = ?) AS alimento_ok";
         String gravar = "INSERT INTO itens_refeicao (refeicao_id, alimento_id, quantidade_g, usuario_id) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE quantidade_g = VALUES(quantidade_g)";

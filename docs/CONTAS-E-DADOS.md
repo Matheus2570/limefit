@@ -8,7 +8,7 @@ A janela exige autenticação em Perfil, Alimentos, Refeições, Planejamento e 
 
 Use `contexto.usuarioId()` ou `contexto.sessao().exigirUsuarioId()` na interface. Os DAOs herdam `usuarioId()` de `DaoDaConta`; obtenha o ID uma vez no início de cada operação e use esse valor em todos os comandos da operação. O DAO não mantém uma identidade capturada no construtor. Nunca aceite o dono de um campo editável ou use `id=1`.
 
-Para trabalhos em segundo plano, registre a revisão da sessão ao agendar. Só inicie uma operação se ainda for a mesma sessão; use o ID obtido no início em toda a transação. Em `done()`, confira a revisão antes de aplicar dados à interface. A autenticação implementada já invalida respostas antigas ao navegar, sair ou trocar de conta.
+Para trabalhos em segundo plano, registre a revisão da sessão ao agendar. Só inicie uma operação se ainda for a mesma sessão; use o ID obtido no início em toda a transação. Em `done()`, confira a revisão antes de aplicar dados à interface. Os trabalhos dos módulos usam uma cópia da identidade obtida sob bloqueio breve antes do JDBC. Uma troca de conta posterior não pode redirecionar uma gravação para o novo usuário. Os resultados de sessões antigas são descartados na EDT. Leituras substituídas do planejamento são canceladas, e os demais formulários bloqueiam operações simultâneas.
 
 ## Banco conferido
 
@@ -28,11 +28,11 @@ Java usa `long` para IDs, `BigDecimal` para medidas/nutrientes e `LocalDate` par
 
 O campo `perfis.identificador` continua para preservar o esquema e os registros; ele não é a identidade de login. Ao criar um perfil, gere um token técnico único de 64 caracteres (por exemplo SHA-256 de um UUID); preserve-o nas atualizações. `Objetivo.codigo()` fornece exatamente os valores SQL do ENUM. Altura está em centímetros e deve ser dividida por 100 no cálculo do IMC.
 
-Todos os nutrientes dos alimentos são **por 100 g**. Para uma porção: `nutriente * quantidade_g / 100`. Use `BigDecimal`, some sem arredondar intermediários e arredonde só para exibir. Um plano sem refeições retorna lista vazia e totais zero quando o colega implementar, nunca null.
+Todos os nutrientes dos alimentos são **por 100 g**. Para uma porção: `nutriente * quantidade_g / 100`. Use `BigDecimal`, some sem arredondar intermediários e arredonde só para exibir. Um plano sem refeições retorna lista vazia e totais zero, nunca null.
 
 ## Assinaturas acordadas
 
-Todos os DAOs recebem `(Conexao conexao, Sessao sessao)` e todos os métodos declarados lançam `SQLException`. Eles ainda não executam SQL: lançam uma exceção que identifica a implementação pendente. Não engula essa exceção nem apresente sucesso antes de implementar.
+Todos os DAOs recebem `(Conexao conexao, Sessao sessao)` e todos os métodos declarados lançam `SQLException`. Todos estão implementados com JDBC e filtros de proprietário.
 
 - `PerfilDao.buscarAtual(): Optional<Perfil>`
 - `PerfilDao.salvar(BigDecimal pesoKg, BigDecimal alturaCm, Objetivo objetivo): Perfil`
@@ -55,7 +55,7 @@ Todos os DAOs recebem `(Conexao conexao, Sessao sessao)` e todos os métodos dec
 
 `Optional.empty()` representa registro ausente ou pertencente a outra conta. Atualizações/exclusões retornam `false` se nenhuma linha da conta foi afetada. SQL ou valores inválidos produzem erros que a tela deve apresentar no idioma atual. Falta de implementação nunca é resultado vazio.
 
-## Regras obrigatórias da implementação futura
+## Regras da implementação
 
 Cada SELECT, UPDATE e DELETE filtra o proprietário. Cada INSERT preenche `usuario_id` com o ID autenticado. Use PreparedStatement e try-with-resources. Exemplos:
 
@@ -79,6 +79,6 @@ WHERE r.data_plano = ? AND r.usuario_id = ?;
 
 Aplique o mesmo cálculo a proteínas, carboidratos e gorduras. Obtenha lista e totais em uma leitura consistente para `PlanoDiario`.
 
-Antes de gravar referências (`perfil_id`, `refeicao_id`, `alimento_id`), confira se todas pertencem à conta e use a mesma transação para a operação inteira, com rollback em erro. As FKs compostas reforçam isso no banco. Um alimento em uso não pode ser apagado; apresente a restrição em vez de remover dados de outras entidades silenciosamente. Excluir perfil ou refeição remove seus dependentes por cascata; comunique esse efeito na futura tela de exclusão.
+Antes de gravar referências (`perfil_id`, `refeicao_id`, `alimento_id`), confira se todas pertencem à conta e use a mesma transação para a operação inteira, com rollback em erro. As FKs compostas reforçam isso no banco. Um alimento em uso não pode ser apagado; apresente a restrição em vez de remover dados de outras entidades silenciosamente. Excluir perfil ou refeição remove seus dependentes por cascata; comunique esse efeito na tela de exclusão.
 
 `usuario_id NULL` é exclusivo de linhas legadas sem dono conhecido. Elas são preservadas e ficam fora das consultas por conta; não as associe ao usuário que entrar primeiro. Os gatilhos exigem dono em novos registros e impedem trocar um dono já atribuído. Qualquer associação administrativa de legados deve ser combinada e documentada separadamente.

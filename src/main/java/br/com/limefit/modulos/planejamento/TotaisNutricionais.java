@@ -4,4 +4,7 @@ import java.math.BigDecimal;
 
 /** Soma de nutrientes por 100 g multiplicados por quantidade_g / 100; arredondar só ao exibir. */
 public record TotaisNutricionais(BigDecimal calorias, BigDecimal proteinas,
-                                 BigDecimal carboidratos, BigDecimal gorduras) {}
+                                 BigDecimal carboidratos, BigDecimal gorduras) {
+    public static final TotaisNutricionais ZERO = new TotaisNutricionais(
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+}

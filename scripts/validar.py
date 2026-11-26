@@ -6,7 +6,10 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 import time
+
+sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parent.parent
 MYSQL = os.environ.get("LIMEFIT_MYSQL", shutil.which("mysql") or r"C:\xampp\mysql\bin\mysql.exe")
@@ -65,7 +68,7 @@ def main():
         assert sql(f"SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='{banco}';") == "8"
         print("PASS: SQL completo cria cinco tabelas e oito gatilhos em instalação nova.", flush=True)
         ambiente_teste = dict(os.environ, LIMEFIT_DB_NAME=banco, LIMEFIT_TEST_DB=banco)
-        comando = [str(ROOT / ("mvnw.cmd" if os.name == "nt" else "mvnw")), "test"]
+        comando = [str(ROOT / ("mvnw.cmd" if os.name == "nt" else "mvnw")), "clean", "test"]
         subprocess.run(comando, cwd=ROOT, env=ambiente_teste, check=True)
     finally:
         for banco in criados:

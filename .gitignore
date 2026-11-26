@@ -6,3 +6,5 @@
 !/.vscode/extensions.json
 *.iml
 .env
+__pycache__/
+*.pyc

@@ -86,6 +86,7 @@ class DesktopIntegracaoTest {
         aguardar(() -> ((JTable) buscar("alimentos.tabela")).getRowCount() == 1);
         assertEquals("Aveia", edt(() -> ((JTable) buscar("alimentos.tabela")).getValueAt(0, 0)));
         foto("alimentos-pt");
+        testarPerfilRefeicoesEPlanejamento();
         clicar("sair");
         assertFalse(contexto.sessao().autenticada());
         assertThrows(IllegalStateException.class, contexto::usuarioId);
@@ -105,6 +106,14 @@ class DesktopIntegracaoTest {
         assertEquals(0, edt(() -> ((JTable) buscar("alimentos.tabela")).getRowCount()));
         assertEquals("", edt(() -> ((JTextField) buscar("alimentos.nome")).getText()));
         assertEquals("No foods found.", edt(() -> ((JLabel) buscar("alimentos.mensagem")).getText()));
+        clicar("menu.PERFIL");
+        aguardar(() -> ((JButton) buscar("perfil.salvar")).isEnabled());
+        assertEquals("", edt(() -> ((JTextField) buscar("perfil.peso")).getText()));
+        assertFalse(edt(() -> buscar("perfil.excluir").isEnabled()));
+        clicar("menu.PLANEJAMENTO");
+        aguardar(() -> ((JLabel) buscar("planejamento.status")).getText().contains("No meals"));
+        assertEquals(0, edt(() -> ((JTable) buscar("planejamento.tabela")).getRowCount()));
+        assertEquals("0.00", edt(() -> ((JLabel) buscar("planejamento.total.0")).getText()));
         clicar("menu.INICIO");
         assertEquals("Hello, Bruno Teste", edt(() -> ((JLabel) buscar("home.boasVindas")).getText()));
         assertEquals("Go to my profile", textoBotao("home.comecar"));
@@ -120,6 +129,93 @@ class DesktopIntegracaoTest {
         foto("home-menor");
         clicar("home.criar");
         foto("cadastro-menor");
+    }
+    private void testarPerfilRefeicoesEPlanejamento() throws Exception {
+        clicar("menu.PERFIL");
+        aguardar(() -> buscar("perfil.salvar").isEnabled());
+        campo("perfil.peso", "70,50"); campo("perfil.altura", "175");
+        assertEquals("23,02", edt(() -> ((JLabel)buscar("perfil.imc")).getText()));
+        clicar("perfil.salvar");
+        aguardar(() -> ((JLabel)buscar("perfil.status")).getText().contains("sucesso"));
+        clicar("idioma.en");
+        assertEquals("Profile saved successfully.", edt(() -> ((JLabel)buscar("perfil.status")).getText()));
+        assertEquals("23.02", edt(() -> ((JLabel)buscar("perfil.imc")).getText()));
+        clicar("idioma.pt"); foto("perfil-pt");
+        clicar("menu.REFEICOES");
+        aguardar(() -> buscar("refeicoes.adicionar").isEnabled());
+        campo("refeicoes.nome", "Café da manhã"); clicar("refeicoes.adicionar");
+        aguardar(() -> buscar("refeicoes.adicionar").isEnabled() && ((JList<?>)buscar("refeicoes.lista")).getModel().getSize()==1);
+        edt(() -> { ((JList<?>)buscar("refeicoes.lista")).setSelectedIndex(0); return null; });
+        aguardar(() -> buscar("refeicoes.incluirItem").isEnabled());
+        campo("refeicoes.gramas", "150,50"); clicar("refeicoes.incluirItem");
+        aguardar(() -> buscar("refeicoes.incluirItem").isEnabled() && ((JTable)buscar("refeicoes.itens")).getRowCount()==1);
+        assertEquals("585,82", edt(() -> ((JTable)buscar("refeicoes.itens")).getValueAt(0,2)));
+        // A mesma chave de alimento atualiza a porção, sem duplicar o item.
+        campo("refeicoes.gramas", "100"); clicar("refeicoes.incluirItem");
+        aguardar(() -> buscar("refeicoes.incluirItem").isEnabled() && "389,25".equals(((JTable)buscar("refeicoes.itens")).getValueAt(0,2)));
+        campo("refeicoes.nome", "Café atualizado"); clicar("refeicoes.editar");
+        aguardar(() -> buscar("refeicoes.adicionar").isEnabled());
+        clicar("idioma.en");
+        assertEquals("Set portion", textoBotao("refeicoes.incluirItem"));
+        assertEquals("Food", edt(() -> ((JTable)buscar("refeicoes.itens")).getColumnModel().getColumn(0).getHeaderValue()));
+        clicar("idioma.pt");
+        edt(() -> { ((JList<?>)buscar("refeicoes.lista")).setSelectedIndex(0); return null; });
+        aguardar(() -> buscar("refeicoes.incluirItem").isEnabled()); foto("refeicoes-pt");
+        clicar("menu.PLANEJAMENTO");
+        aguardar(() -> ((JLabel)buscar("planejamento.status")).getText().contains("carregado"));
+        assertEquals("389,25", edt(() -> ((JLabel)buscar("planejamento.total.0")).getText()));
+        assertEquals("13,50", edt(() -> ((JLabel)buscar("planejamento.total.1")).getText()));
+        assertEquals("Café atualizado", edt(() -> ((JTable)buscar("planejamento.tabela")).getValueAt(0,1)));
+        foto("planejamento-pt");
+        campo("planejamento.data","31/02/2026"); clicar("planejamento.consultar");
+        assertTrue(edt(() -> ((JLabel)buscar("planejamento.status")).getText().contains("inválida")));
+        clicar("idioma.en");
+        assertEquals("Invalid date. Use mm/dd/yyyy.", edt(() -> ((JLabel)buscar("planejamento.status")).getText()));
+        clicar("planejamento.hoje");
+        aguardar(() -> "389.25".equals(((JLabel)buscar("planejamento.total.0")).getText()));
+        clicar("planejamento.proximo");
+        aguardar(() -> ((JLabel)buscar("planejamento.status")).getText().contains("No meals"));
+        assertEquals("0.00", edt(() -> ((JLabel)buscar("planejamento.total.0")).getText()));
+        clicar("menu.PROJETO"); foto("projeto-en"); clicar("projeto.home");
+        assertEquals(Tela.INICIO,edt(janela::telaAtual));
+        clicar("idioma.pt");
+        clicar("menu.REFEICOES");
+        aguardar(() -> buscar("refeicoes.adicionar").isEnabled());
+        edt(() -> { ((JList<?>)buscar("refeicoes.lista")).setSelectedIndex(0); return null; });
+        aguardar(() -> buscar("refeicoes.incluirItem").isEnabled());
+        edt(() -> { ((JTable)buscar("refeicoes.itens")).setRowSelectionInterval(0,0); return null; });
+        clicar("refeicoes.removerItem");
+        aguardar(() -> buscar("refeicoes.incluirItem").isEnabled() && ((JTable)buscar("refeicoes.itens")).getRowCount()==0);
+        // Recoloca o item para conferir a cascata ao excluir o perfil.
+        clicar("refeicoes.incluirItem");
+        aguardar(() -> buscar("refeicoes.incluirItem").isEnabled() && ((JTable)buscar("refeicoes.itens")).getRowCount()==1);
+        clicar("menu.PERFIL"); aguardar(() -> buscar("perfil.excluir").isEnabled());
+        clicarConfirmando("perfil.excluir");
+        aguardar(() -> ((JLabel)buscar("perfil.status")).getText().contains("excluído"));
+        clicar("menu.REFEICOES");
+        aguardar(() -> buscar("refeicoes.atualizar").isEnabled());
+        assertEquals(0,edt(() -> ((JList<?>)buscar("refeicoes.lista")).getModel().getSize()));
+        assertFalse(edt(() -> buscar("refeicoes.adicionar").isEnabled()));
+    }
+    private void clicarConfirmando(String nome) throws Exception {
+        edt(() -> {
+            Timer timer=new Timer(100,e -> {
+                for(Window w:Window.getWindows()) if(w instanceof JDialog && w.isShowing()) {
+                    JOptionPane pane=encontrarConfirmacao(w);
+                    if(pane!=null) pane.setValue(JOptionPane.YES_OPTION);
+                }
+            });
+            timer.start();
+            try { ((AbstractButton)buscar(nome)).doClick(0); } finally { timer.stop(); }
+            return null;
+        });
+    }
+    private JOptionPane encontrarConfirmacao(Component c) {
+        if(c instanceof JOptionPane p) return p;
+        if(c instanceof Container container) for(Component filho:container.getComponents()) {
+            JOptionPane p=encontrarConfirmacao(filho); if(p!=null) return p;
+        }
+        return null;
     }
     private void cadastrar(String nome, String email) throws Exception {
         clicar("home.criar");

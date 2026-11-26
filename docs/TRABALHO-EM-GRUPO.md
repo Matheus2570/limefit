@@ -1,42 +1,33 @@
-# Trabalho em grupo — entrega por pasta
+# Trabalho em grupo — integração final
 
-Matheus de Carvalho mantém a Home, autenticação e integração. Os cinco módulos dos colegas estão em `src/main/java/br/com/limefit/modulos/`, cada um com tela, conteúdo vazio e guia local. Todos abrem no menu desde o início, após o login.
+Os cinco módulos estão integrados em `src/main/java/br/com/limefit/modulos/`:
 
-## Ciclo de entrega
+| Responsável | Módulo | Entrega |
+|---|---|---|
+| Matheus de Carvalho | Home, autenticação e integração | Navegação, sessão, PT/EN e validação |
+| Matheus Maiolo | Perfil | Cadastro, consulta, atualização, exclusão e IMC |
+| Lucas | Alimentos | Busca e CRUD com nutrientes por 100 g |
+| Guilherme | Refeições | CRUD por data e porções dos alimentos |
+| Gustavo | Planejamento | Refeições e totais nutricionais por data |
+| Francisco | Projeto | Apresentação, equipe e textos em PT/EN |
 
-1. Receba o **projeto completo**, instale o JDK e configure o banco pelo README.
-2. Crie uma branch, por exemplo `feat/perfil`, `feat/alimentos`, `feat/refeicoes`, `feat/planejamento` ou `feat/projeto-ingles`.
-3. Edite principalmente a sua pasta. Preserve nomes de arquivos, pacotes, construtores e assinaturas públicas.
-4. Execute `.mvnw.cmd compile exec:java`; teste em inglês e português, com duas contas e após sair/entrar de novo.
-5. Devolva **somente a pasta do seu módulo**, incluindo o LEIA-ME atualizado. Não inclua `target/`, `.git`, credenciais ou bibliotecas baixadas.
-6. Se precisar mudar o banco, uma classe compartilhada ou o contrato de outro módulo, descreva a proposta em um arquivo separado e combine com Matheus de Carvalho. Não faça a integração depender de uma mudança oculta.
-7. Matheus incorpora no mesmo caminho e executa `.mvnw.cmd test` e `python scripts/validar.py`.
+## Manutenção
 
-## O que já está conectado
+Preserve pacotes, modelos e assinaturas descritos em [CONTAS-E-DADOS](CONTAS-E-DADOS.md). Os guias locais de cada módulo documentam o estado implementado. Alterações futuras devem ser feitas em branches e verificadas no projeto completo.
 
-O construtor `TelaX(ContextoAplicacao contexto)` recebe os recursos. Use o `JPanel conteudo` herdado de `PainelModulo` para a interface; `BorderLayout`, `GridBagLayout`, `BoxLayout` e `GridLayout` evitam coordenadas fixas. Não crie outro JFrame para a tela.
+A base compartilhada fornece `ContextoAplicacao`, `PainelModulo` e `Visual`. As telas são painéis Swing na janela principal. Todas as operações JDBC ficam fora da EDT. `PainelModulo.executarNaConta` vincula o trabalho à sessão que o agendou e descarta resultados antigos. `limparDados()` esvazia campos, tabelas e caches ao sair ou trocar de conta.
 
-```java
-long usuarioId = contexto.usuarioId(); // Falha se não houver login.
-String nome = contexto.sessao().usuario().nome();
-contexto.navegar(Tela.REFEICOES);
-String titulo = idioma.escolher("Título", "Title");
+## Fluxo entre módulos
+
+Perfil cria o registro necessário para Refeições. Alimentos fornece o catálogo privado de nutrientes por 100 g. Refeições associa porções em gramas a uma data e Planejamento calcula os totais sem arredondamentos intermediários. Excluir perfil/refeição remove dependentes por cascata; excluir alimento em uso é recusado pelo banco.
+
+Não há migração adicional nesta integração. O banco já migrado é compatível. Para instalação nova, use somente `sql/limefit.sql`.
+
+## Verificar uma alteração
+
+```powershell
+.\mvnw.cmd test
+python scripts/validar.py
 ```
 
-Use `Visual.botao`, `Visual.campo`, `Visual.rotulo` e `Visual.rolagem` para manter as cores e os espaçamentos. Os DAOs são criados com `contexto.conexao()` e `contexto.sessao()` no construtor da tela; não substitua a conexão por credenciais fixas.
-
-Sobrescreva `atualizarTextos()` chamando `super.atualizarTextos()` para traduzir todos os controles e mensagens, inclusive erros já exibidos. Ela também pode ser chamada durante a construção da janela; inicialize seus componentes antes de usá-los.
-
-Carregue dados em `aoExibir()` (chamando `super.aoExibir()`) para atualizar após alterações de outro módulo. Execute JDBC em `SwingWorker.doInBackground()` e atualize Swing em `done()`. Não bloqueie a EDT com consultas. Antes de iniciar o trabalho, capture a revisão da sessão; descarte respostas se ela mudar ou a tela for fechada. Em `limparDados()`, esvazie campos, tabelas, seleções e caches, e invalide trabalhos antigos. `aoOcultar()` pode interromper carregamentos ligados à navegação.
-
-Os modelos são records Java imutáveis, com acesso por `perfil.pesoKg()`, `alimento.nome()` etc. Para editar, monte novos valores ou envie os parâmetros previstos no DAO. Os contratos detalhados e os nomes SQL estão em [CONTAS-E-DADOS](CONTAS-E-DADOS.md).
-
-## Integração entre colegas
-
-- **Perfil** mantém um perfil por conta. Refeições usa `PerfilDao.buscarAtual()` e trata perfil ausente com convite para `Tela.PERFIL`.
-- **Alimentos** fornece `AlimentoDao.listar("")` e `buscarPorId(id)` para a seleção das porções.
-- **Refeições** mantém datas, nomes e itens. Planejamento pode consumir `listarPorData(data)` e `listarItens(refeicaoId)`.
-- **Planejamento** monta a visão por data e calcula os totais. Não há tabela extra de planejamento. Para totais consistentes, seu DAO pode consultar diretamente as tabelas existentes, usando os mesmos contratos e escopos por conta.
-- **Projeto** apresenta equipe e revisa o inglês; não precisa de DAO.
-
-Não devolva alterações nos arquivos de outro colega. Coordene qualquer mudança de assinatura para que uma pasta nova continue compilando com as demais.
+A validação completa usa bancos temporários e uma janela real. Não inclua `target/`, credenciais ou dependências baixadas na entrega. As evidências são descritas em [ENTREGA](ENTREGA.md).
